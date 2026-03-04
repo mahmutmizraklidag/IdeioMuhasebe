@@ -1,0 +1,310 @@
+﻿using System;
+using System.Linq;
+using System.Threading.Tasks;
+using IdeioMuhasebe.Data;
+using IdeioMuhasebe.Entities;
+using IdeioMuhasebe.Models;
+using IdeioMuhasebe.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace IdeioMuhasebe.Controllers
+{
+    [Authorize]
+    public class IncomesController : Controller
+    {
+        private readonly DatabaseContext _db;
+        private readonly RecurringIncomeService _recurring;
+
+        public IncomesController(DatabaseContext db, RecurringIncomeService recurring)
+        {
+            _db = db;
+            _recurring = recurring;
+        }
+
+        private static (DateTime from, DateTime toExclusive) DefaultMonthRange()
+        {
+            var now = DateTime.Today;
+            var f = new DateTime(now.Year, now.Month, 1);
+            return (f, f.AddMonths(1));
+        }
+
+        private static (DateTime from, DateTime toExclusive) Range(DateTime? from, DateTime? to)
+        {
+            if (from == null || to == null) return DefaultMonthRange();
+
+            var f = from.Value.Date;
+            var t = to.Value.Date;
+            if (t < f) (f, t) = (t, f);
+            return (f, t.AddDays(1));
+        }
+
+        private static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
+
+        private static int MonthDiff(DateTime aMonth, DateTime bMonth)
+            => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
+
+        // “Son 1 dönem” => endMonth - dueMonth == 1
+        private static bool LastOnePeriodWarning(DateTime dueDate, DateTime startDate, int periodCount)
+        {
+            if (periodCount <= 0) return false;
+            var startMonth = MonthStart(startDate);
+            var endMonth = startMonth.AddMonths(periodCount - 1);
+            var dueMonth = MonthStart(dueDate);
+
+            var left = MonthDiff(dueMonth, endMonth);
+            return left == 1;
+        }
+
+        [HttpGet]
+        public IActionResult Index() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> List(DateTime? from, DateTime? to, int? incomeTypeId)
+        {
+            await _recurring.EnsureGeneratedAsync(DateTime.Today);
+
+            var (f, toEx) = Range(from, to);
+
+            var q = _db.Incomes.AsNoTracking()
+                .Include(x => x.IncomeType)
+                .Include(x => x.RecurringIncome)
+                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+
+            if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
+                q = q.Where(x => x.IncomeTypeId == incomeTypeId.Value);
+
+            var list = await q
+                .OrderBy(x => x.DueDate).ThenBy(x => x.Id)
+                .Select(x => new
+                {
+                    id = x.Id,
+                    incomeTypeId = x.IncomeTypeId,
+                    incomeType = x.IncomeType.Name,
+                    name = x.Name,
+
+                    netAmount = x.NetAmount,
+                    taxAmount = x.TaxAmount,
+                    amount = x.Amount,
+
+                    dueDate = x.DueDate.ToString("yyyy-MM-dd"),
+                    payer = x.Payer,
+                    isReceived = x.IsReceived,
+
+                    recurringIncomeId = x.RecurringIncomeId,
+                    recurringPeriodCount = x.RecurringIncome != null ? x.RecurringIncome.PeriodCount : null,
+                    lastPeriodWarning = (x.RecurringIncome != null
+                        && x.RecurringIncome.PeriodCount.HasValue
+                        && x.RecurringIncome.PeriodCount.Value > 0
+                        && LastOnePeriodWarning(x.DueDate, x.RecurringIncome.StartDate, x.RecurringIncome.PeriodCount.Value))
+                })
+                .ToListAsync();
+
+            return Json(new { ok = true, list });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Upsert([FromBody] IncomeUpsertVm vm)
+        {
+            if (vm == null) return BadRequest(new { ok = false, message = "Geçersiz istek." });
+            if (vm.IncomeTypeId <= 0) return BadRequest(new { ok = false, message = "Kategori seçmelisiniz." });
+            if (string.IsNullOrWhiteSpace(vm.Name)) return BadRequest(new { ok = false, message = "Gelir adı zorunludur." });
+            if (vm.DueDate == default) return BadRequest(new { ok = false, message = "Tarih zorunludur." });
+
+            var name = vm.Name.Trim();
+            var payer = string.IsNullOrWhiteSpace(vm.Payer) ? null : vm.Payer.Trim();
+
+            decimal net = vm.NetAmount;
+            decimal tax = vm.TaxAmount;
+            if (net < 0) net = 0;
+            if (tax < 0) tax = 0;
+            var total = net + tax;
+            if (total <= 0) return BadRequest(new { ok = false, message = "Net + Vergi toplamı 0'dan büyük olmalı." });
+
+            int? periodCount = (vm.PeriodCount.HasValue && vm.PeriodCount.Value > 0) ? vm.PeriodCount.Value : (int?)null;
+
+            if (vm.Id == 0)
+            {
+                int? recurringId = null;
+
+                if (vm.IsRecurring)
+                {
+                    var day = vm.DueDate.Day;
+
+                    var rule = await _db.RecurringIncomes.FirstOrDefaultAsync(r =>
+                        r.IsActive &&
+                        r.IncomeTypeId == vm.IncomeTypeId &&
+                        r.Name == name &&
+                        (r.Payer ?? "") == (payer ?? "") &&
+                        r.DayOfMonth == day
+                    );
+
+                    if (rule == null)
+                    {
+                        rule = new RecurringIncome
+                        {
+                            IncomeTypeId = vm.IncomeTypeId,
+                            Name = name,
+                            NetAmount = net,
+                            TaxAmount = tax,
+                            Amount = total,
+                            Payer = payer,
+                            DayOfMonth = day,
+                            StartDate = vm.DueDate.Date,
+                            PeriodCount = periodCount,
+                            IsActive = true,
+                            UpdatedDate = DateTime.Now
+                        };
+                        _db.RecurringIncomes.Add(rule);
+                        await _db.SaveChangesAsync();
+                    }
+                    else
+                    {
+                        if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
+                        rule.NetAmount = net;
+                        rule.TaxAmount = tax;
+                        rule.Amount = net + tax;
+                        rule.Payer = payer;
+                        rule.PeriodCount = periodCount;
+                        rule.UpdatedDate = DateTime.Now;
+                        await _db.SaveChangesAsync();
+                    }
+
+                    recurringId = rule.Id;
+                }
+
+                var ent = new Income
+                {
+                    IncomeTypeId = vm.IncomeTypeId,
+                    Name = name,
+                    NetAmount = net,
+                    TaxAmount = tax,
+                    Amount = total,
+                    DueDate = vm.DueDate.Date,
+                    Payer = payer,
+                    IsReceived = vm.IsReceived,
+                    UpdatedDate = DateTime.Now,
+                    RecurringIncomeId = recurringId
+                };
+
+                _db.Incomes.Add(ent);
+                await _db.SaveChangesAsync();
+
+                if (recurringId.HasValue)
+                    await _recurring.EnsureGeneratedAsync(DateTime.Today);
+
+                return Json(new { ok = true, id = ent.Id });
+            }
+
+            var existing = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == vm.Id);
+            if (existing == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+
+            existing.IncomeTypeId = vm.IncomeTypeId;
+            existing.Name = name;
+            existing.NetAmount = net;
+            existing.TaxAmount = tax;
+            existing.Amount = total;
+            existing.DueDate = vm.DueDate.Date;
+            existing.Payer = payer;
+            existing.IsReceived = vm.IsReceived;
+            existing.UpdatedDate = DateTime.Now;
+
+            if (!vm.IsRecurring)
+            {
+                existing.RecurringIncomeId = null;
+                await _db.SaveChangesAsync();
+                return Json(new { ok = true });
+            }
+
+            // recurring açık: rule oluştur/güncelle
+            {
+                var day = vm.DueDate.Day;
+
+                RecurringIncome rule = null;
+                if (existing.RecurringIncomeId.HasValue)
+                    rule = await _db.RecurringIncomes.FirstOrDefaultAsync(r => r.Id == existing.RecurringIncomeId.Value);
+
+                if (rule == null)
+                {
+                    rule = await _db.RecurringIncomes.FirstOrDefaultAsync(r =>
+                        r.IsActive &&
+                        r.IncomeTypeId == vm.IncomeTypeId &&
+                        r.Name == name &&
+                        (r.Payer ?? "") == (payer ?? "") &&
+                        r.DayOfMonth == day
+                    );
+
+                    if (rule == null)
+                    {
+                        rule = new RecurringIncome
+                        {
+                            IncomeTypeId = vm.IncomeTypeId,
+                            Name = name,
+                            NetAmount = net,
+                            TaxAmount = tax,
+                            Amount = total,
+                            Payer = payer,
+                            DayOfMonth = day,
+                            StartDate = vm.DueDate.Date,
+                            PeriodCount = periodCount,
+                            IsActive = true,
+                            UpdatedDate = DateTime.Now
+                        };
+                        _db.RecurringIncomes.Add(rule);
+                        await _db.SaveChangesAsync();
+                    }
+                }
+
+                rule.IncomeTypeId = vm.IncomeTypeId;
+                rule.Name = name;
+                rule.NetAmount = net;
+                rule.TaxAmount = tax;
+                rule.Amount = net + tax;
+                rule.Payer = payer;
+                rule.DayOfMonth = day;
+                if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
+                rule.PeriodCount = periodCount;
+                rule.IsActive = true;
+                rule.UpdatedDate = DateTime.Now;
+
+                existing.RecurringIncomeId = rule.Id;
+
+                await _db.SaveChangesAsync();
+                await _recurring.EnsureGeneratedAsync(DateTime.Today);
+            }
+
+            return Json(new { ok = true });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Delete([FromBody] int id)
+        {
+            var ent = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == id);
+            if (ent == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+
+            if (ent.RecurringIncomeId.HasValue)
+            {
+                var m = new DateTime(ent.DueDate.Year, ent.DueDate.Month, 1);
+                var rid = ent.RecurringIncomeId.Value;
+
+                var exists = await _db.RecurringIncomeSkips.AnyAsync(s => s.RecurringIncomeId == rid && s.Month == m);
+                if (!exists)
+                {
+                    _db.RecurringIncomeSkips.Add(new Entities.RecurringIncomeSkip
+                    {
+                        RecurringIncomeId = rid,
+                        Month = m
+                    });
+                }
+            }
+
+            _db.Incomes.Remove(ent);
+            await _db.SaveChangesAsync();
+
+            return Json(new { ok = true });
+        }
+    }
+}

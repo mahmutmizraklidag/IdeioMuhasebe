@@ -1,0 +1,58 @@
+﻿@{
+    ViewData["Title"] = "Gelir Kategorileri";
+}
+@Html.AntiForgeryToken()
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="text-muted">Gelir türlerini ekle / düzenle / sil</div>
+    <button class="btn btn-primary" id="btnNewType"><i class="bi bi-plus"></i> Yeni Kategori</button>
+</div>
+
+<div class="card card-soft">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr class="text-muted small">
+                        <th style="width:90px">ID</th>
+                        <th>Ad</th>
+                        <th class="text-end" style="width:180px"></th>
+                    </tr>
+                </thead>
+                <tbody id="typeBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="typeModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="typeModalTitle">Gelir Kategorisi</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="typeId" value="0" />
+
+                <div class="mb-2">
+                    <label class="form-label">Kategori Adı</label>
+                    <input class="form-control" id="typeName" maxlength="120" />
+                </div>
+
+                <div class="text-danger small mt-2 d-none" id="typeErr"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-light" data-bs-dismiss="modal">İptal</button>
+                <button class="btn btn-primary" id="btnSaveType">Kaydet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/incomeTypes.js" asp-append-version="true"></script>
+}

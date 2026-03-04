@@ -1,0 +1,391 @@
+:root {
+    --bg: #0b1220;
+    --panel: #0f172a;
+    --panel2: #111c33;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #3b82f6;
+    --card: #0f172a;
+    --border: rgba(255,255,255,.08);
+}
+
+body {
+    background: #0b1220;
+    color: var(--text);
+}
+
+a {
+    text-decoration: none;
+}
+
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+}
+.sticky-side {
+    position: sticky;
+    top: 92px; /* topbar yüksekliğine göre */
+}
+.sidebar {
+    width: 260px;
+    background: linear-gradient(180deg, #0f172a, #0b1220);
+    border-right: 1px solid var(--border);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.logo-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--accent);
+    display: inline-block;
+}
+
+.sidebar .nav-link {
+    color: rgba(229,231,235,.85);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 12px;
+}
+
+    .sidebar .nav-link:hover {
+        background: rgba(59,130,246,.12);
+        color: #fff;
+    }
+
+.content {
+    flex: 1;
+}
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(11,18,32,.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.card-soft {
+    background: rgba(15,23,42,.75);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.25);
+}
+
+.table {
+    color: var(--text);
+}
+
+    .table thead th {
+        border-color: var(--border);
+    }
+
+    .table tbody td {
+        border-color: var(--border);
+    }
+
+.badge.bg-light {
+    background: rgba(255,255,255,.08) !important;
+    border: 1px solid var(--border);
+    color: #fff !important;
+}
+
+.auth-bg {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(1200px 600px at 20% 10%, rgba(59,130,246,.25), transparent), radial-gradient(900px 500px at 90% 30%, rgba(34,197,94,.18), transparent), #0b1220;
+}
+
+.auth-card {
+    width: 420px;
+    max-width: calc(100% - 24px);
+    background: rgba(15,23,42,.75);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 22px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+}
+
+.fab {
+    position: fixed;
+    right: 22px;
+    bottom: 22px;
+    width: 56px;
+    height: 56px;
+    border-radius: 999px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 18px 50px rgba(59,130,246,.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.kanban-col {
+    min-height: 420px;
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    padding: 10px;
+}
+
+.kanban-card {
+    background: rgba(17,28,51,.75);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px;
+    margin-bottom: 10px;
+    cursor: grab;
+}
+
+    .kanban-card:active {
+        cursor: grabbing;
+    }
+
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        left: -280px;
+        top: 0;
+        bottom: 0;
+        z-index: 20;
+        transition: .25s;
+    }
+
+        .sidebar.open {
+            left: 0;
+        }
+}
+/* =========================
+   Dark UI Contrast Patch
+   ========================= */
+
+/* Bootstrap muted bazen fazla sönük kalıyor */
+.text-muted {
+    color: rgba(229,231,235,.72) !important;
+}
+
+/* Card/Modal içi yazılar */
+.card, .modal-content {
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.modal-content {
+    background: rgba(15,23,42,.92) !important;
+}
+
+.modal-header, .modal-footer {
+    border-color: var(--border) !important;
+}
+
+/* Form alanları (beyaz kalıp göz yoruyorsa) */
+.form-control, .form-select {
+    background: rgba(255,255,255,.06) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+
+    .form-control::placeholder {
+        color: rgba(229,231,235,.45) !important;
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: rgba(59,130,246,.55) !important;
+        box-shadow: 0 0 0 .2rem rgba(59,130,246,.18) !important;
+    }
+
+/* Checkbox/radio */
+.form-check-input {
+    background-color: rgba(255,255,255,.08) !important;
+    border-color: var(--border) !important;
+}
+
+    .form-check-input:checked {
+        background-color: var(--accent) !important;
+        border-color: var(--accent) !important;
+    }
+
+/* Tablolar */
+.table {
+    --bs-table-color: var(--text);
+    --bs-table-bg: transparent;
+    --bs-table-border-color: var(--border);
+}
+
+    .table thead th {
+        color: rgba(229,231,235,.75) !important;
+    }
+
+/* btn-light dark temada “açık gri buton” gibi dursun */
+.btn-light {
+    background: rgba(255,255,255,.08) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+
+    .btn-light:hover {
+        background: rgba(255,255,255,.12) !important;
+    }
+
+/* Dropdown menüler */
+.dropdown-menu {
+    background: rgba(15,23,42,.96) !important;
+    border-color: var(--border) !important;
+}
+
+.dropdown-item {
+    color: rgba(229,231,235,.9) !important;
+}
+
+    .dropdown-item:hover {
+        background: rgba(59,130,246,.12) !important;
+    }
+
+/* Linkler */
+.link-light {
+    color: rgba(229,231,235,.92) !important;
+}
+/* Tarayıcıya native kontrolleri dark çizmesini söyler */
+html {
+    color-scheme: dark;
+}
+/* Select kutusu */
+.form-select, select {
+    background-color: rgba(255,255,255,.06) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}
+
+    /* Açılan liste (bazı tarayıcılarda %100 uygulanır, bazılarında kısmi) */
+    select option,
+    select optgroup {
+        background-color: rgba(15,23,42,.96) !important;
+        color: var(--text) !important;
+    }
+
+/* Ödemeler sayfası kolonları kendi içinde scroll olsun */
+#colUnpaid, #colPaid {
+    max-height: calc(100vh - 260px); /* filtre+header yüksekliğine göre gerekirse 220/300 yap */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px; /* scrollbar içerik üstüne binmesin */
+    overscroll-behavior: contain;
+}
+
+    /* kartlar alt alta düzgün dursun diye */
+    #colUnpaid .kanban-card,
+    #colPaid .kanban-card {
+        margin-bottom: 10px;
+    }
+
+/* mobilde ekran kısa olduğu için biraz daha az yükseklik */
+@media (max-width: 992px) {
+    #colUnpaid, #colPaid {
+        max-height: 55vh;
+    }
+}
+/* Payments: başlık sabit, liste kendi içinde scroll */
+.payments-panel {
+    height: calc(100vh - 260px); /* üst filtre+navbar yüksekliğine göre 220-320 oynatabilirsin */
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+}
+
+    .payments-panel .card-body {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0; /* ✅ overflow çalışması için kritik */
+    }
+
+    .payments-panel .kanban-col {
+        flex: 1 1 auto;
+        min-height: 0; /* ✅ overflow çalışması için kritik */
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 8px; /* scrollbar içerik üstüne binmesin */
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+    }
+
+/* Mobilde daha iyi */
+@media (max-width: 992px) {
+    .payments-panel {
+        height: 60vh;
+        min-height: 320px;
+    }
+}
+
+/* Mobilde sidebar slide-in + backdrop */
+@media (max-width: 767.98px) {
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 280px; /* istersen 260-320 */
+        transform: translateX(-105%);
+        transition: transform .2s ease;
+        z-index: 1045;
+    }
+
+    body.sidebar-open .sidebar {
+        transform: translateX(0);
+    }
+
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s ease;
+        z-index: 1040;
+    }
+
+    body.sidebar-open .sidebar-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Sidebar açıkken arka sayfa scroll olmasın */
+    body.sidebar-open {
+        overflow: hidden;
+    }
+}
+
+/* Statistik chart boyutları (küçük ve düzenli) */
+.chart-wrap {
+    height: 300px; /* istersen 220-320 arası ayarla */
+}
+
+.chart-wrap--donut {
+    height: 350px;
+}
+
+.chart-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+

@@ -1,0 +1,151 @@
+﻿@{
+    ViewData["Title"] = "İstatistik";
+}
+@Html.AntiForgeryToken()
+
+<div class="card card-soft mb-3">
+    <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+        <div>
+            <label class="form-label small text-muted">Başlangıç</label>
+            <input type="date" class="form-control" id="fromDate">
+        </div>
+        <div>
+            <label class="form-label small text-muted">Bitiş</label>
+            <input type="date" class="form-control" id="toDate">
+        </div>
+
+        <div style="min-width:220px">
+            <label class="form-label small text-muted">Mod</label>
+            <select class="form-select" id="mode">
+                <option value="expense" selected>Gider</option>
+                <option value="income">Gelir</option>
+                <option value="compare">Karşılaştır</option>
+            </select>
+        </div>
+
+        <!-- GİDER -->
+        <div style="min-width:240px" id="wrapDebtType">
+            <label class="form-label small text-muted">Gider Kategorisi</label>
+            <select class="form-select" id="debtTypeFilter"></select>
+        </div>
+
+        <div style="min-width:220px" id="wrapExpenseStatus">
+            <label class="form-label small text-muted">Gider Durumu</label>
+            <select class="form-select" id="expenseStatus">
+                <option value="total" selected>Toplam</option>
+                <option value="paid">Ödenen</option>
+                <option value="unpaid">Ödenmeyen</option>
+            </select>
+        </div>
+
+        <!-- ✅ YENİ: GİDER TİPİ -->
+        <div style="min-width:220px" id="wrapExpenseKind">
+            <label class="form-label small text-muted">Gider Tipi</label>
+            <select class="form-select" id="expenseKind">
+                <option value="total" selected>Toplam Gider</option>
+                <option value="normal">Normal Gider</option>
+                <option value="tax">Vergi Gideri</option>
+            </select>
+        </div>
+
+        <!-- GELİR -->
+        <div style="min-width:240px" id="wrapIncomeType">
+            <label class="form-label small text-muted">Gelir Kategorisi</label>
+            <select class="form-select" id="incomeTypeFilter"></select>
+        </div>
+
+        <div style="min-width:220px" id="wrapIncomeStatus">
+            <label class="form-label small text-muted">Gelir Durumu</label>
+            <select class="form-select" id="incomeStatus">
+                <option value="total" selected>Toplam</option>
+                <option value="paid">Tahsil Edilen</option>
+                <option value="unpaid">Tahsil Edilmeyen</option>
+            </select>
+        </div>
+
+        <button class="btn btn-primary ms-auto" id="btnApply">
+            <i class="bi bi-funnel"></i> Filtrele
+        </button>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Line -->
+    <div class="col-12">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="fw-semibold mb-2">Aylık Çizgisel</div>
+                <div class="chart-wrap">
+                    <canvas id="dailyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ay ay bar (compare modunda) -->
+    <div class="col-12 d-none" id="monthBarWrap">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="fw-semibold mb-2">Ay Ay Gelir / Gider</div>
+                <div class="chart-wrap">
+                    <canvas id="monthBarChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Total bar (compare modunda) -->
+    <div class="col-12 d-none" id="barWrap">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="fw-semibold mb-2">Gelir / Gider (Toplam)</div>
+                <div class="chart-wrap">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tek donut -->
+    <div class="col-12" id="singleDonutWrap">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="fw-semibold mb-2">Dağılım</div>
+                <div class="chart-wrap chart-wrap--donut">
+                    <canvas id="typeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compare modunda iki donut -->
+    <div class="col-12 d-none" id="compareDonutsWrap">
+        <div class="row g-3">
+            <div class="col-12 col-lg-6">
+                <div class="card card-soft">
+                    <div class="card-body">
+                        <div class="fw-semibold mb-2">Gider Dağılımı</div>
+                        <div class="chart-wrap chart-wrap--donut">
+                            <canvas id="expTypeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-6">
+                <div class="card card-soft">
+                    <div class="card-body">
+                        <div class="fw-semibold mb-2">Gelir Dağılımı</div>
+                        <div class="chart-wrap chart-wrap--donut">
+                            <canvas id="incTypeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="~/js/stats.js" asp-append-version="true"></script>
+}

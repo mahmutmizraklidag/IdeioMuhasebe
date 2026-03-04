@@ -1,0 +1,62 @@
+﻿@{
+    ViewData["Title"] = "Kullanıcılar";
+}
+@Html.AntiForgeryToken()
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="text-muted"></div>
+    <button class="btn btn-primary" id="btnNewUser"><i class="bi bi-plus"></i> Yeni Kullanıcı</button>
+</div>
+
+<div class="card card-soft">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr class="text-muted small">
+                        <th>ID</th>
+                        <th>Kullanıcı Adı</th>
+                        <th style="width:220px"></th>
+                    </tr>
+                </thead>
+                <tbody id="userBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="userModalTitle">Kullanıcı</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="userId" value="0" />
+
+                <div class="mb-2">
+                    <label class="form-label">Kullanıcı Adı</label>
+                    <input class="form-control" id="username" maxlength="30" />
+                </div>
+
+                <div class="mb-2">
+                    <label class="form-label" id="pwdLabel">Şifre</label>
+                    <input type="password" class="form-control" id="password" maxlength="30" />
+                    <div class="text-muted small mt-1 d-none" id="pwdHint">Boş bırakırsan şifre değişmez.</div>
+                </div>
+
+                <div class="text-danger small mt-2 d-none" id="userErr"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-light" data-bs-dismiss="modal">İptal</button>
+                <button class="btn btn-primary" id="btnSaveUser">Kaydet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/users.js" asp-append-version="true"></script>
+}
