@@ -54,8 +54,7 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-// migrate + seed
-await SeedData.EnsureSeedAsync(app.Services);
+
 
 
 app.Run();
