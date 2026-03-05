@@ -306,9 +306,11 @@
         await loadDebtTypes();
         await loadIncomeTypes();
 
+        // ✅ ilk açılışta karşılaştır
+        mode.value = "compare";
+
         expenseStatus.value = "total";
         incomeStatus.value = "total";
-        expenseKind.value = "total";
 
         handleModeUi();
         await load();
