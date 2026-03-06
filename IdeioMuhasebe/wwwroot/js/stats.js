@@ -11,7 +11,6 @@
     const expenseStatus = document.getElementById("expenseStatus");
     const incomeStatus = document.getElementById("incomeStatus");
 
-    // ✅ yeni
     const expenseKind = document.getElementById("expenseKind");
     const wrapExpenseKind = document.getElementById("wrapExpenseKind");
 
@@ -75,8 +74,10 @@
 
     const expLabel = () => {
         const k = (expenseKind?.value || "total");
-        if (k === "tax") return "Vergi Gideri";
-        if (k === "normal") return "Gider";
+        if (k === "tax_debt") return "Gider Vergisi";
+        if (k === "tax_income") return "Gelir Vergisi";
+        if (k === "tax_total" || k === "tax") return "Toplam Vergi";
+        if (k === "normal") return "Normal Gider";
         return "Toplam Gider";
     };
 
@@ -209,7 +210,6 @@
             expenseStatus.value = "total";
             expenseKind.value = "total";
         } else {
-            // compare
             wrapDebtType.classList.remove("d-none");
             wrapExpenseStatus.classList.remove("d-none");
             wrapExpenseKind.classList.remove("d-none");
@@ -265,7 +265,6 @@
             return;
         }
 
-        // single (expense / income)
         compareWrap.classList.add("d-none");
         barWrap.classList.add("d-none");
         monthBarWrap.classList.add("d-none");
@@ -292,10 +291,9 @@
     expenseStatus.addEventListener("change", load);
     incomeStatus.addEventListener("change", load);
 
-    // ✅ yeni
     expenseKind.addEventListener("change", () => {
-        // vergi gideri seçilince debtType filtresi anlamsız, temizleyelim
-        if (expenseKind.value === "tax") debtTypeFilter.value = "";
+        // Gelir Vergisi seçilince borç kategori filtresi anlamsız
+        if (expenseKind.value === "tax_income") debtTypeFilter.value = "";
         load();
     });
 

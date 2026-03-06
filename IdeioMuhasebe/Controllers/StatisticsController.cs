@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using IdeioMuhasebe.Data;
+using IdeioMuhasebe.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -24,7 +25,6 @@ namespace IdeioMuhasebe.Controllers
 
         private static (DateTime from, DateTime toExclusive) Range(DateTime? from, DateTime? to)
         {
-            // tarih gelmezse bu ay
             var now = DateTime.Today;
             var defaultFrom = new DateTime(now.Year, now.Month, 1);
             var defaultToEx = defaultFrom.AddMonths(1);
@@ -54,33 +54,17 @@ namespace IdeioMuhasebe.Controllers
 
         [HttpGet]
         public async Task<IActionResult> DataV2(
-     DateTime? from,
-     DateTime? to,
-     string mode = "expense",
-     int? debtTypeId = null,
-     int? incomeTypeId = null,
-     string expenseStatus = "total",
-     string incomeStatus = "total",
-     string expenseKind = "total" // total | normal | tax
- )
+            DateTime? from,
+            DateTime? to,
+            string mode = "expense",
+            int? debtTypeId = null,
+            int? incomeTypeId = null,
+            string expenseStatus = "total",
+            string incomeStatus = "total",
+            string expenseKind = "total" // total | normal | tax_total | tax_debt | tax_income
+        )
         {
             var (f, toEx) = Range(from, to);
-
-            static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
-
-            static List<DateTime> MonthsBetween(DateTime fromDate, DateTime toExclusive)
-            {
-                var list = new List<DateTime>();
-                var cur = MonthStart(fromDate);
-                var last = MonthStart(toExclusive.AddDays(-1));
-                while (cur <= last)
-                {
-                    list.Add(cur);
-                    cur = cur.AddMonths(1);
-                }
-                return list;
-            }
-
             var months = MonthsBetween(f, toEx);
 
             expenseStatus = (expenseStatus ?? "total").ToLowerInvariant();
@@ -88,10 +72,13 @@ namespace IdeioMuhasebe.Controllers
             expenseKind = (expenseKind ?? "total").ToLowerInvariant();
             mode = (mode ?? "expense").ToLowerInvariant();
 
+            // Backward compatibility: eski "tax" değeri gelirse "tax_total" say
+            if (expenseKind == "tax") expenseKind = "tax_total";
+
             // ------------------------------------------------------------
-            // NORMAL EXPENSE (Debts)
+            // DEBTS base query (status + category)
             // ------------------------------------------------------------
-            IQueryable<IdeioMuhasebe.Entities.Debt> debtQ = _db.Debts.AsNoTracking()
+            IQueryable<Debt> debtQ = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
                 .Where(x => x.DueDate >= f && x.DueDate < toEx);
 
@@ -101,9 +88,15 @@ namespace IdeioMuhasebe.Controllers
             if (expenseStatus == "paid") debtQ = debtQ.Where(x => x.IsPaid);
             else if (expenseStatus == "unpaid") debtQ = debtQ.Where(x => !x.IsPaid);
 
+            // ✅ Normal gider = Debt.NetAmount (eski kayıt uyumu: Net=0 & Tax=0 => Amount)
             var normalMonthlyMap = await debtQ
                 .GroupBy(x => new { x.DueDate.Year, x.DueDate.Month })
-                .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.Amount) })
+                .Select(g => new
+                {
+                    g.Key.Year,
+                    g.Key.Month,
+                    Total = g.Sum(x => (x.NetAmount == 0m && x.TaxAmount == 0m) ? x.Amount : x.NetAmount)
+                })
                 .ToListAsync();
 
             var normalMonthlyDict = normalMonthlyMap.ToDictionary(
@@ -113,75 +106,141 @@ namespace IdeioMuhasebe.Controllers
 
             var normalByType = await debtQ
                 .GroupBy(x => x.DebtType.Name)
-                .Select(g => new { type = g.Key, total = g.Sum(x => x.Amount) })
+                .Select(g => new
+                {
+                    type = g.Key,
+                    total = g.Sum(x => (x.NetAmount == 0m && x.TaxAmount == 0m) ? x.Amount : x.NetAmount)
+                })
                 .OrderByDescending(x => x.total)
                 .ToListAsync();
 
-            // ------------------------------------------------------------
-            // TAX EXPENSE (Income.TaxAmount)
-            // (incomeStatus + incomeTypeId burada da uygulanır)
-            // ------------------------------------------------------------
-            IQueryable<IdeioMuhasebe.Entities.Income> taxQ = _db.Incomes.AsNoTracking()
-                .Include(x => x.IncomeType)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
-
-            if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
-                taxQ = taxQ.Where(x => x.IncomeTypeId == incomeTypeId.Value);
-
-            if (incomeStatus == "paid") taxQ = taxQ.Where(x => x.IsReceived);
-            else if (incomeStatus == "unpaid") taxQ = taxQ.Where(x => !x.IsReceived);
-
-            var taxMonthlyMap = await taxQ
+            // ✅ Gider Vergisi = Debt.TaxAmount
+            var debtTaxMonthlyMap = await debtQ
                 .GroupBy(x => new { x.DueDate.Year, x.DueDate.Month })
                 .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.TaxAmount) })
                 .ToListAsync();
 
-            var taxMonthlyDict = taxMonthlyMap.ToDictionary(
+            var debtTaxMonthlyDict = debtTaxMonthlyMap.ToDictionary(
                 x => $"{x.Year:D4}-{x.Month:D2}",
                 x => x.Total
             );
 
-            var taxTotal = taxMonthlyMap.Sum(x => x.Total);
+            var debtTaxTotal = debtTaxMonthlyMap.Sum(x => x.Total);
+
+            // ------------------------------------------------------------
+            // Gelir Vergisi (Income.TaxAmount) gider sayılır
+            // incomeStatus + incomeTypeId burada uygulanır
+            // ------------------------------------------------------------
+            IQueryable<Income> incomeTaxQ = _db.Incomes.AsNoTracking()
+                .Include(x => x.IncomeType)
+                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+
+            if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
+                incomeTaxQ = incomeTaxQ.Where(x => x.IncomeTypeId == incomeTypeId.Value);
+
+            if (incomeStatus == "paid") incomeTaxQ = incomeTaxQ.Where(x => x.IsReceived);
+            else if (incomeStatus == "unpaid") incomeTaxQ = incomeTaxQ.Where(x => !x.IsReceived);
+
+            var incomeTaxMonthlyMap = await incomeTaxQ
+                .GroupBy(x => new { x.DueDate.Year, x.DueDate.Month })
+                .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.TaxAmount) })
+                .ToListAsync();
+
+            var incomeTaxMonthlyDict = incomeTaxMonthlyMap.ToDictionary(
+                x => $"{x.Year:D4}-{x.Month:D2}",
+                x => x.Total
+            );
+
+            var incomeTaxTotal = incomeTaxMonthlyMap.Sum(x => x.Total);
+
+            decimal GetDebtTax(string key) => debtTaxMonthlyDict.TryGetValue(key, out var v) ? v : 0m;
+            decimal GetIncomeTax(string key) => incomeTaxMonthlyDict.TryGetValue(key, out var v) ? v : 0m;
+
+            decimal GetSelectedTax(string key)
+            {
+                var dt = GetDebtTax(key);
+                var it = GetIncomeTax(key);
+
+                return expenseKind switch
+                {
+                    "tax_debt" => dt,
+                    "tax_income" => it,
+                    "tax_total" => dt + it,
+                    _ => dt + it
+                };
+            }
+
+            decimal SelectedTaxTotal()
+            {
+                return expenseKind switch
+                {
+                    "tax_debt" => debtTaxTotal,
+                    "tax_income" => incomeTaxTotal,
+                    "tax_total" => debtTaxTotal + incomeTaxTotal,
+                    _ => debtTaxTotal + incomeTaxTotal
+                };
+            }
 
             // ------------------------------------------------------------
             // EXPENSE monthly + byType (expenseKind'e göre)
+            // total: normal + (debtTax + incomeTax)
+            // normal: normal
+            // tax_debt / tax_income / tax_total: sadece seçilen vergi
             // ------------------------------------------------------------
             var expenseMonthly = months.Select(m =>
             {
                 var key = $"{m.Year:D4}-{m.Month:D2}";
                 var normal = normalMonthlyDict.TryGetValue(key, out var nv) ? nv : 0m;
-                var tax = taxMonthlyDict.TryGetValue(key, out var tv) ? tv : 0m;
 
-                decimal v =
-                    expenseKind == "normal" ? normal :
-                    expenseKind == "tax" ? tax :
-                    (normal + tax); // total
+                var fullTax = GetDebtTax(key) + GetIncomeTax(key);
+                var selectedTax = GetSelectedTax(key);
+
+                decimal v = expenseKind switch
+                {
+                    "normal" => normal,
+                    "tax_debt" => selectedTax,
+                    "tax_income" => selectedTax,
+                    "tax_total" => selectedTax,
+                    _ => normal + fullTax // total
+                };
 
                 return (object)new { month = key, total = v };
             }).ToList();
 
             List<object> expenseByType;
-            if (expenseKind == "tax")
-            {
-                expenseByType = new List<object>();
-                if (taxTotal > 0)
-                    expenseByType.Add(new { type = "Vergi", total = taxTotal });
-            }
-            else if (expenseKind == "normal")
+
+            if (expenseKind == "normal")
             {
                 expenseByType = normalByType.Cast<object>().ToList();
+            }
+            else if (expenseKind == "tax_debt")
+            {
+                expenseByType = new List<object>();
+                if (debtTaxTotal > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTaxTotal });
+            }
+            else if (expenseKind == "tax_income")
+            {
+                expenseByType = new List<object>();
+                if (incomeTaxTotal > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTaxTotal });
+            }
+            else if (expenseKind == "tax_total")
+            {
+                expenseByType = new List<object>();
+                if (debtTaxTotal > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTaxTotal });
+                if (incomeTaxTotal > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTaxTotal });
             }
             else
             {
+                // total: normal by type + iki vergi slice
                 expenseByType = normalByType.Cast<object>().ToList();
-                if (taxTotal > 0)
-                    expenseByType.Add(new { type = "Vergi", total = taxTotal });
+                if (debtTaxTotal > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTaxTotal });
+                if (incomeTaxTotal > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTaxTotal });
             }
 
             // ------------------------------------------------------------
             // INCOME (✅ TOPLAM GELİR = Amount)
             // ------------------------------------------------------------
-            IQueryable<IdeioMuhasebe.Entities.Income> incomeQ = _db.Incomes.AsNoTracking()
+            IQueryable<Income> incomeQ = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
                 .Where(x => x.DueDate >= f && x.DueDate < toEx);
 
@@ -246,7 +305,6 @@ namespace IdeioMuhasebe.Controllers
                 });
             }
 
-            // default: expense
             return Json(new { ok = true, mode = "expense", monthly = expenseMonthly, byType = expenseByType });
         }
     }

@@ -6,6 +6,7 @@
     const typeFilter = document.getElementById("typeFilter");
     const body = document.getElementById("debtBody");
 
+    // side form
     const sideTitle = document.getElementById("sideTitle");
     const btnNewDebt = document.getElementById("btnNewDebt");
     const btnResetDebt = document.getElementById("btnResetDebt");
@@ -14,13 +15,17 @@
     const debtId = document.getElementById("debtId");
     const debtTypeId = document.getElementById("debtTypeId");
     const debtName = document.getElementById("debtName");
-    const debtAmount = document.getElementById("debtAmount");
+
+    const debtNet = document.getElementById("debtNetAmount");
+    const debtTax = document.getElementById("debtTaxAmount");
+    const debtAmount = document.getElementById("debtAmount"); // readonly total
+
     const debtDueDate = document.getElementById("debtDueDate");
     const debtPayee = document.getElementById("debtPayee");
     const debtIsPaid = document.getElementById("debtIsPaid");
     const debtErr = document.getElementById("debtErr");
 
-    // recurring UI
+    // ✅ recurring
     const debtIsRecurring = document.getElementById("debtIsRecurring");
     const wrapDebtPeriod = document.getElementById("wrapDebtPeriod");
     const debtPeriodCount = document.getElementById("debtPeriodCount");
@@ -31,17 +36,29 @@
         debtDueDate.value = new Date().toISOString().slice(0, 10);
     };
 
+    const calcTotal = () => {
+        const net = Number(debtNet.value || 0);
+        const tax = Number(debtTax.value || 0);
+        debtAmount.value = (net + tax).toFixed(2);
+    };
+
     const togglePeriod = () => {
         const on = !!debtIsRecurring?.checked;
         wrapDebtPeriod?.classList.toggle("d-none", !on);
         if (!on && debtPeriodCount) debtPeriodCount.value = "";
     };
 
+    debtNet.addEventListener("input", calcTotal);
+    debtTax.addEventListener("input", calcTotal);
+    debtIsRecurring?.addEventListener("change", togglePeriod);
+
     const resetForm = () => {
         sideTitle.textContent = "Borç Ekle";
         debtId.value = "0";
         debtName.value = "";
-        debtAmount.value = "";
+        debtNet.value = "";
+        debtTax.value = "";
+        debtAmount.value = "0.00";
         debtPayee.value = "";
         debtIsPaid.checked = false;
 
@@ -58,7 +75,12 @@
         debtId.value = x.id;
         debtTypeId.value = x.debtTypeId;
         debtName.value = x.name;
-        debtAmount.value = x.amount;
+
+        // eski kayıt uyumu
+        debtNet.value = (x.netAmount ?? 0) || (x.amount ?? 0);
+        debtTax.value = (x.taxAmount ?? 0) || 0;
+        calcTotal();
+
         debtDueDate.value = x.dueDate;
         debtPayee.value = x.payee ?? "";
         debtIsPaid.checked = !!x.isPaid;
@@ -83,36 +105,33 @@
 
     const load = async () => {
         const isPaidParam =
-            paidFilter?.value === "" ? "" : (paidFilter?.value === "1" ? "true" : "false");
+            paidFilter.value === "" ? "" : (paidFilter.value === "1" ? "true" : "false");
 
-        const params = {
+        const data = await app.get("/Debts/List", {
             from: from.value,
             to: to.value,
             debtTypeId: typeFilter.value,
             isPaid: isPaidParam
-        };
-
-        const data = await app.get("/Debts/List", params);
+        });
 
         body.innerHTML = "";
         data.list.forEach((x) => {
             const encoded = encodeURIComponent(JSON.stringify(x));
 
-            // ✅ SON 1 DÖNEM yazısı borç adının üstünde
-            const warnHtml = x.lastPeriodWarning
-                ? `<div class="small text-warning mb-1">Son 1 dönem</div>`
-                : ``;
+            const net = Number(x.netAmount ?? 0);
+            const tax = Number(x.taxAmount ?? 0);
+            const total = Number(x.amount ?? (net + tax));
 
             body.insertAdjacentHTML("beforeend", `
         <tr>
           <td class="text-muted">${app.formatDateTr(x.dueDate)}</td>
           <td><a href="/DebtTypes/Details/${x.debtTypeId}" class="link-light">${x.debtType}</a></td>
-          <td class="fw-semibold">
-            ${warnHtml}
-            <div>${x.name}</div>
-          </td>
+          <td class="fw-semibold">${x.name}</td>
           <td class="text-muted">${x.payee ?? ""}</td>
-          <td class="text-end">${app.money(x.amount)}</td>
+          <td class="text-end">
+            <div class="fw-semibold">${app.money(total)}</div>
+            <div class="small text-muted">Net: ${app.money(net)} · Vergi: ${app.money(tax)}</div>
+          </td>
           <td class="text-end">${app.dueBadgeHtml(x.dueDate, x.isPaid)}</td>
           <td class="text-end text-nowrap">
             <div class="d-inline-flex flex-nowrap gap-1">
@@ -148,21 +167,27 @@
     });
 
     btnSaveDebt.addEventListener("click", async () => {
+        const net = Number(debtNet.value || 0);
+        const tax = Number(debtTax.value || 0);
+        const total = net + tax;
+
         const payload = {
             id: Number(debtId.value),
             debtTypeId: Number(debtTypeId.value),
             name: debtName.value.trim(),
-            amount: Number(debtAmount.value || 0),
+            netAmount: net,
+            taxAmount: tax,
+            amount: total, // geriye dönük uyum
             dueDate: debtDueDate.value,
             payee: debtPayee.value.trim(),
             isPaid: debtIsPaid.checked,
 
-            // recurring
+            // ✅ recurring
             isRecurring: !!debtIsRecurring?.checked,
             periodCount: debtIsRecurring?.checked ? Number(debtPeriodCount?.value || 0) : null
         };
 
-        if (!payload.debtTypeId || !payload.name || !payload.amount || !payload.dueDate) {
+        if (!payload.debtTypeId || !payload.name || !payload.dueDate || total <= 0) {
             debtErr.classList.remove("d-none");
             return;
         }
@@ -172,21 +197,19 @@
         await load();
     });
 
-    btnNewDebt?.addEventListener("click", resetForm);
-    btnResetDebt?.addEventListener("click", resetForm);
+    btnNewDebt.addEventListener("click", resetForm);
+    btnResetDebt.addEventListener("click", resetForm);
 
     document.getElementById("btnAddDebt")?.addEventListener("click", () => {
         resetForm();
         document.querySelector(".sticky-side")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
-    btnApply?.addEventListener("click", load);
-    typeFilter?.addEventListener("change", load);
-    paidFilter?.addEventListener("change", load);
-    from?.addEventListener("change", load);
-    to?.addEventListener("change", load);
-
-    debtIsRecurring?.addEventListener("change", togglePeriod);
+    btnApply.addEventListener("click", load);
+    typeFilter.addEventListener("change", load);
+    paidFilter.addEventListener("change", load);
+    from.addEventListener("change", load);
+    to.addEventListener("change", load);
 
     (async () => {
         await loadTypes();

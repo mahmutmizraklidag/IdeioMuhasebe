@@ -14,8 +14,17 @@ namespace IdeioMuhasebe.Entities
         [Required]
         public string Name { get; set; }
 
+        // ✅ TOPLAM
         [Column(TypeName = "decimal(18,2)")]
         public decimal Amount { get; set; }
+
+        // ✅ YENİ
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal NetAmount { get; set; }
+
+        // ✅ YENİ
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TaxAmount { get; set; }
 
         public string? Payee { get; set; }
 

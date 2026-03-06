@@ -11,10 +11,19 @@ namespace IdeioMuhasebe.Entities
         [Display(Name = "Borç Adı")]
         public string Name { get; set; }
 
+        // ✅ TOPLAM (Net + Vergi)
         [Required]
         [Column(TypeName = "decimal(18,2)")]
-        [Display(Name = "Miktar (₺)")]
+        [Display(Name = "Toplam (₺)")]
         public decimal Amount { get; set; }
+
+        // ✅ YENİ: Net
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal NetAmount { get; set; }
+
+        // ✅ YENİ: Vergi
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TaxAmount { get; set; }
 
         [Required]
         [DataType(DataType.Date)]

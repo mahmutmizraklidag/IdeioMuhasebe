@@ -27,6 +27,9 @@ namespace IdeioMuhasebe.Services
             return day;
         }
 
+        private static string YmKey(DateTime m) => $"{m.Year:D4}-{m.Month:D2}";
+        private static string YmdKey(DateTime d) => d.ToString("yyyy-MM-dd");
+
         public async Task EnsureGeneratedAsync(DateTime today)
         {
             var targetMonth = MonthStart(today);
@@ -48,46 +51,56 @@ namespace IdeioMuhasebe.Services
 
                 if (lastMonth < startMonth) continue;
 
-                var fromDate = startMonth;
                 var toEx = lastMonth.AddMonths(1);
 
-                // ✅ 1) Bu rule için mevcut borçların dueDate’leri
-                var existingDates = await _db.Debts.AsNoTracking()
-                    .Where(x => x.RecurringDebtId == r.Id && x.DueDate >= fromDate && x.DueDate < toEx)
+                // 1) Bu rule için mevcut üretilen borçların dueDate key set'i
+                var existingDueKeys = await _db.Debts.AsNoTracking()
+                    .Where(x => x.RecurringDebtId == r.Id && x.DueDate >= startMonth && x.DueDate < toEx)
                     .Select(x => x.DueDate)
                     .ToListAsync();
 
-                var existingSet = new HashSet<DateTime>(existingDates);
+                var existingSet = new HashSet<string>(existingDueKeys.Select(YmdKey));
 
-                // ✅ 2) Bu rule için “skip edilen aylar”
-                var skipMonths = await _db.RecurringDebtSkips.AsNoTracking()
+                // 2) ✅ Bu rule için skip edilen ayların key set'i (yyyy-MM)
+                var skipMonthKeys = await _db.RecurringDebtSkips.AsNoTracking()
                     .Where(s => s.RecurringDebtId == r.Id && s.Month >= startMonth && s.Month < toEx)
                     .Select(s => s.Month)
                     .ToListAsync();
 
-                var skipSet = new HashSet<DateTime>(skipMonths);
+                var skipSet = new HashSet<string>(skipMonthKeys.Select(YmKey));
 
+                // 3) Üretim
                 for (var m = startMonth; m <= lastMonth; m = m.AddMonths(1))
                 {
-                    // ✅ skip varsa o ayı hiç üretme
-                    if (skipSet.Contains(m)) continue;
+                    var ym = YmKey(m);
+
+                    // ✅ Bu ay skip ise ASLA üretme
+                    if (skipSet.Contains(ym)) continue;
 
                     var day = ClampDay(m.Year, m.Month, r.DayOfMonth);
                     var due = new DateTime(m.Year, m.Month, day);
 
-                    if (existingSet.Contains(due)) continue;
+                    var dueKey = YmdKey(due);
+                    if (existingSet.Contains(dueKey)) continue;
 
                     _db.Debts.Add(new Debt
                     {
                         DebtTypeId = r.DebtTypeId,
                         Name = r.Name,
-                        Amount = r.Amount,
+
+                        NetAmount = r.NetAmount,
+                        TaxAmount = r.TaxAmount,
+                        Amount = r.NetAmount + r.TaxAmount,
+
                         DueDate = due.Date,
                         Payee = r.Payee,
                         IsPaid = false,
                         UpdatedDate = DateTime.Now,
                         RecurringDebtId = r.Id
                     });
+
+                    // aynı run içinde bir daha üretmeyi engelle
+                    existingSet.Add(dueKey);
                 }
             }
 

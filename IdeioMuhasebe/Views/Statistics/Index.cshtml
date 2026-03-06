@@ -38,13 +38,15 @@
             </select>
         </div>
 
-        <!-- ✅ YENİ: GİDER TİPİ -->
+        <!-- ✅ GİDER TİPİ (güncellendi) -->
         <div style="min-width:220px" id="wrapExpenseKind">
             <label class="form-label small text-muted">Gider Tipi</label>
             <select class="form-select" id="expenseKind">
                 <option value="total" selected>Toplam Gider</option>
                 <option value="normal">Normal Gider</option>
-                <option value="tax">Vergi Gideri</option>
+                <option value="tax_total">Toplam Vergi</option>
+                <option value="tax_debt">Gider Vergisi</option>
+                <option value="tax_income">Gelir Vergisi</option>
             </select>
         </div>
 
@@ -70,7 +72,6 @@
 </div>
 
 <div class="row g-3">
-    <!-- Line -->
     <div class="col-12">
         <div class="card card-soft">
             <div class="card-body">
@@ -82,7 +83,6 @@
         </div>
     </div>
 
-    <!-- Ay ay bar (compare modunda) -->
     <div class="col-12 d-none" id="monthBarWrap">
         <div class="card card-soft">
             <div class="card-body">
@@ -94,7 +94,6 @@
         </div>
     </div>
 
-    <!-- Total bar (compare modunda) -->
     <div class="col-12 d-none" id="barWrap">
         <div class="card card-soft">
             <div class="card-body">
@@ -106,7 +105,6 @@
         </div>
     </div>
 
-    <!-- Tek donut -->
     <div class="col-12" id="singleDonutWrap">
         <div class="card card-soft">
             <div class="card-body">
@@ -118,7 +116,6 @@
         </div>
     </div>
 
-    <!-- Compare modunda iki donut -->
     <div class="col-12 d-none" id="compareDonutsWrap">
         <div class="row g-3">
             <div class="col-12 col-lg-6">
