@@ -38,7 +38,7 @@
             </select>
         </div>
 
-        <!-- ✅ GİDER TİPİ (güncellendi) -->
+        <!-- GİDER TİPİ -->
         <div style="min-width:220px" id="wrapExpenseKind">
             <label class="form-label small text-muted">Gider Tipi</label>
             <select class="form-select" id="expenseKind">
@@ -72,6 +72,7 @@
 </div>
 
 <div class="row g-3">
+    <!-- Line -->
     <div class="col-12">
         <div class="card card-soft">
             <div class="card-body">
@@ -83,6 +84,7 @@
         </div>
     </div>
 
+    <!-- Ay ay bar (compare modunda) -->
     <div class="col-12 d-none" id="monthBarWrap">
         <div class="card card-soft">
             <div class="card-body">
@@ -94,6 +96,7 @@
         </div>
     </div>
 
+    <!-- Total bar (compare modunda) -->
     <div class="col-12 d-none" id="barWrap">
         <div class="card card-soft">
             <div class="card-body">
@@ -105,6 +108,7 @@
         </div>
     </div>
 
+    <!-- Tek donut -->
     <div class="col-12" id="singleDonutWrap">
         <div class="card card-soft">
             <div class="card-body">
@@ -116,6 +120,7 @@
         </div>
     </div>
 
+    <!-- Compare modunda iki donut -->
     <div class="col-12 d-none" id="compareDonutsWrap">
         <div class="row g-3">
             <div class="col-12 col-lg-6">
@@ -136,6 +141,151 @@
                             <canvas id="incTypeChart"></canvas>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ✅ NEW: Özel Karşılaştırma (Sütun) -->
+    <div class="col-12">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="fw-semibold mb-2">Özel Karşılaştırma (Sütun)</div>
+
+                <div class="row g-3">
+                    <!-- A -->
+                    <div class="col-12 col-lg-6">
+                        <div class="border rounded-3 p-3">
+                            <div class="fw-semibold mb-2">A</div>
+
+                            <label class="form-label small text-muted">Ne?</label>
+                            <select class="form-select mb-2" id="aMetric">
+                                <option value="income_total">Toplam Gelir</option>
+                                <option value="expense_total">Toplam Gider</option>
+                                <option value="expense_normal">Normal Gider</option>
+                                <option value="tax_total">Toplam Vergi</option>
+                                <option value="tax_debt">Gider Vergisi</option>
+                                <option value="tax_income">Gelir Vergisi</option>
+                            </select>
+
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Başlangıç</label>
+                                    <input type="date" class="form-control" id="aFrom">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Bitiş</label>
+                                    <input type="date" class="form-control" id="aTo">
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gider Kategorisi</label>
+                                    <select class="form-select" id="aDebtType"></select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gider Durumu</label>
+                                    <select class="form-select" id="aExpenseStatus">
+                                        <option value="total" selected>Toplam</option>
+                                        <option value="paid">Ödenen</option>
+                                        <option value="unpaid">Ödenmeyen</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gelir Kategorisi</label>
+                                    <select class="form-select" id="aIncomeType"></select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gelir Durumu</label>
+                                    <select class="form-select" id="aIncomeStatus">
+                                        <option value="total" selected>Toplam</option>
+                                        <option value="paid">Tahsil Edilen</option>
+                                        <option value="unpaid">Tahsil Edilmeyen</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="small text-muted mt-2">
+                                Not: Seçtiğin “Ne?” değerine göre bazı filtreler otomatik görmezden gelinir.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- B -->
+                    <div class="col-12 col-lg-6">
+                        <div class="border rounded-3 p-3">
+                            <div class="fw-semibold mb-2">B</div>
+
+                            <label class="form-label small text-muted">Ne?</label>
+                            <select class="form-select mb-2" id="bMetric">
+                                <option value="income_total">Toplam Gelir</option>
+                                <option value="expense_total" selected>Toplam Gider</option>
+                                <option value="expense_normal">Normal Gider</option>
+                                <option value="tax_total">Toplam Vergi</option>
+                                <option value="tax_debt">Gider Vergisi</option>
+                                <option value="tax_income">Gelir Vergisi</option>
+                            </select>
+
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Başlangıç</label>
+                                    <input type="date" class="form-control" id="bFrom">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Bitiş</label>
+                                    <input type="date" class="form-control" id="bTo">
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gider Kategorisi</label>
+                                    <select class="form-select" id="bDebtType"></select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gider Durumu</label>
+                                    <select class="form-select" id="bExpenseStatus">
+                                        <option value="total" selected>Toplam</option>
+                                        <option value="paid">Ödenen</option>
+                                        <option value="unpaid">Ödenmeyen</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gelir Kategorisi</label>
+                                    <select class="form-select" id="bIncomeType"></select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">Gelir Durumu</label>
+                                    <select class="form-select" id="bIncomeStatus">
+                                        <option value="total" selected>Toplam</option>
+                                        <option value="paid">Tahsil Edilen</option>
+                                        <option value="unpaid">Tahsil Edilmeyen</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="small text-muted mt-2">
+                                Örn: A=Şubat Ödenen Gider, B=Mart Ödenmeyen Gider gibi.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-primary" id="btnCompareBar">
+                            <i class="bi bi-arrow-left-right"></i> Karşılaştır
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chart-wrap mt-3" style="height:260px">
+                    <canvas id="customCompareChart"></canvas>
                 </div>
             </div>
         </div>
