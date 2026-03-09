@@ -27,7 +27,9 @@ namespace IdeioMuhasebe.Controllers
         {
             var (f, toEx) = Range(from, to);
 
-            // EXPENSES (Debts)
+            // ---------------------------------------------------------
+            // EXPENSES (Debts) -> Amount zaten net+vergi (borç toplamı)
+            // ---------------------------------------------------------
             var qExp = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
                 .Where(x => x.DueDate >= f && x.DueDate < toEx);
@@ -35,9 +37,9 @@ namespace IdeioMuhasebe.Controllers
             if (debtTypeId.HasValue && debtTypeId.Value > 0)
                 qExp = qExp.Where(x => x.DebtTypeId == debtTypeId.Value);
 
-            var expTotal = await qExp.SumAsync(x => (decimal?)x.Amount) ?? 0m;
-            var expPaid = await qExp.Where(x => x.IsPaid).SumAsync(x => (decimal?)x.Amount) ?? 0m;
-            var expRemaining = expTotal - expPaid;
+            var debtTotal = await qExp.SumAsync(x => (decimal?)x.Amount) ?? 0m;
+            var debtPaid = await qExp.Where(x => x.IsPaid).SumAsync(x => (decimal?)x.Amount) ?? 0m;
+            var debtUnpaid = debtTotal - debtPaid;
 
             var upcomingExpenses = await qExp
                 .Where(x => !x.IsPaid)
@@ -55,7 +57,10 @@ namespace IdeioMuhasebe.Controllers
                 .Take(50)
                 .ToListAsync();
 
-            // INCOMES
+            // ---------------------------------------------------------
+            // INCOMES -> Amount = net+vergi (gelir toplamı)
+            // + Income.TaxAmount -> gider kartlarına eklenecek
+            // ---------------------------------------------------------
             var qInc = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
                 .Where(x => x.DueDate >= f && x.DueDate < toEx);
@@ -66,6 +71,11 @@ namespace IdeioMuhasebe.Controllers
             var incTotal = await qInc.SumAsync(x => (decimal?)x.Amount) ?? 0m;
             var incReceived = await qInc.Where(x => x.IsReceived).SumAsync(x => (decimal?)x.Amount) ?? 0m;
             var incRemaining = incTotal - incReceived;
+
+            // ✅ Gelir vergisi (TaxAmount) -> gider olarak say
+            var incTaxTotal = await qInc.SumAsync(x => (decimal?)x.TaxAmount) ?? 0m;
+            var incTaxReceived = await qInc.Where(x => x.IsReceived).SumAsync(x => (decimal?)x.TaxAmount) ?? 0m;
+            var incTaxRemaining = incTaxTotal - incTaxReceived;
 
             var upcomingIncomes = await qInc
                 .Where(x => !x.IsReceived)
@@ -83,6 +93,14 @@ namespace IdeioMuhasebe.Controllers
                 .Take(50)
                 .ToListAsync();
 
+            // ---------------------------------------------------------
+            // ✅ HOME KARTLARI
+            // Gider = Borç toplamı + Gelir vergisi
+            // ---------------------------------------------------------
+            var expTotal = debtTotal + incTaxTotal;
+            var expPaid = debtPaid + incTaxReceived;
+            var expRemaining = debtUnpaid + incTaxRemaining;
+
             return Json(new
             {
                 ok = true,
@@ -92,6 +110,7 @@ namespace IdeioMuhasebe.Controllers
                     expenseTotal = expTotal,
                     expensePaid = expPaid,
                     expenseRemaining = expRemaining,
+
                     incomeTotal = incTotal,
                     incomeReceived = incReceived,
                     incomeRemaining = incRemaining
