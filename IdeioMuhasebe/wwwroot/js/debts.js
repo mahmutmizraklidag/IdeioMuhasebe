@@ -121,12 +121,17 @@
             const net = Number(x.netAmount ?? 0);
             const tax = Number(x.taxAmount ?? 0);
             const total = Number(x.amount ?? (net + tax));
-
+           
+            const periodBadge = x.recurringPeriodText
+                ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+                : "";
             body.insertAdjacentHTML("beforeend", `
         <tr>
           <td class="text-muted">${app.formatDateTr(x.dueDate)}</td>
           <td><a href="/DebtTypes/Details/${x.debtTypeId}" class="link-light">${x.debtType}</a></td>
-          <td class="fw-semibold">${x.name}</td>
+         
+  <td class="fw-semibold">${x.name}${periodBadge}</td>
+
           <td class="text-muted">${x.payee ?? ""}</td>
           <td class="text-end">
             <div class="fw-semibold">${app.money(total)}</div>

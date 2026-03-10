@@ -18,18 +18,18 @@
         const dateText = app.formatDateTr(x.dueDate);
         const badgeHtml = isPaidList ? `<span class="badge bg-success">Ödendi</span>` : app.dueBadgeHtml(x.dueDate, false);
 
-        const warnHtml = x.lastPeriodWarning
-            ? `<div class="small text-warning mt-1">Son 1 dönem</div>`
-            : ``;
+        const periodBadge = x.recurringPeriodText
+            ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+            : "";
 
         return `
       <div class="kanban-card" data-id="${x.id}" data-due="${x.dueDate}">
         <div class="d-flex justify-content-between">
-          <div class="fw-semibold">${x.name}</div>
+          <div class="fw-semibold">${x.name}${periodBadge}</div>
           <div class="text-muted small">${dateText}</div>
         </div>
         <div class="small text-muted">${x.debtType}</div>
-        ${warnHtml}
+       
         <div class="mt-1 fw-semibold">${app.money(x.amount)}</div>
         <div class="due-badge mt-1">${badgeHtml}</div>
       </div>

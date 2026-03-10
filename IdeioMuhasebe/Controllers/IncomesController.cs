@@ -61,11 +61,15 @@ namespace IdeioMuhasebe.Controllers
         public IActionResult Index() => View();
 
         [HttpGet]
-        public async Task<IActionResult> List(DateTime? from, DateTime? to, int? incomeTypeId)
+        public async Task<IActionResult> List(DateTime? from, DateTime? to, int? incomeTypeId, bool? isReceived)
         {
             await _recurring.EnsureGeneratedAsync(DateTime.Today);
 
             var (f, toEx) = Range(from, to);
+
+            static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
+            static int MonthDiff(DateTime aMonth, DateTime bMonth)
+                => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
 
             var q = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
@@ -75,8 +79,10 @@ namespace IdeioMuhasebe.Controllers
             if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
                 q = q.Where(x => x.IncomeTypeId == incomeTypeId.Value);
 
-            var list = await q
-                .OrderBy(x => x.DueDate).ThenBy(x => x.Id)
+            if (isReceived.HasValue)
+                q = q.Where(x => x.IsReceived == isReceived.Value);
+
+            var raw = await q.OrderBy(x => x.DueDate).ThenBy(x => x.Id)
                 .Select(x => new
                 {
                     id = x.Id,
@@ -88,18 +94,57 @@ namespace IdeioMuhasebe.Controllers
                     taxAmount = x.TaxAmount,
                     amount = x.Amount,
 
+                    dueDateDt = x.DueDate,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     payer = x.Payer,
                     isReceived = x.IsReceived,
 
                     recurringIncomeId = x.RecurringIncomeId,
-                    recurringPeriodCount = x.RecurringIncome != null ? x.RecurringIncome.PeriodCount : null,
-                    lastPeriodWarning = (x.RecurringIncome != null
-                        && x.RecurringIncome.PeriodCount.HasValue
-                        && x.RecurringIncome.PeriodCount.Value > 0
-                        && LastOnePeriodWarning(x.DueDate, x.RecurringIncome.StartDate, x.RecurringIncome.PeriodCount.Value))
+                    recurringStartDate = x.RecurringIncome != null ? (DateTime?)x.RecurringIncome.StartDate : null,
+                    recurringPeriodCount = x.RecurringIncome != null ? x.RecurringIncome.PeriodCount : (int?)null
                 })
                 .ToListAsync();
+
+            var list = raw.Select(x =>
+            {
+                string? periodText = null;
+
+                if (x.recurringIncomeId.HasValue &&
+                    x.recurringStartDate.HasValue &&
+                    x.recurringPeriodCount.HasValue &&
+                    x.recurringPeriodCount.Value > 0)
+                {
+                    var startM = MonthStart(x.recurringStartDate.Value);
+                    var dueM = MonthStart(x.dueDateDt);
+
+                    var idx = MonthDiff(startM, dueM) + 1;
+                    if (idx < 1) idx = 1;
+                    if (idx > x.recurringPeriodCount.Value) idx = x.recurringPeriodCount.Value;
+
+                    periodText = $"{idx}/{x.recurringPeriodCount.Value}";
+                }
+
+                return new
+                {
+                    x.id,
+                    x.incomeTypeId,
+                    x.incomeType,
+                    x.name,
+
+                    x.netAmount,
+                    x.taxAmount,
+                    x.amount,
+
+                    x.dueDate,
+                    x.payer,
+                    x.isReceived,
+
+                    x.recurringIncomeId,
+                    x.recurringPeriodCount,
+
+                    recurringPeriodText = periodText
+                };
+            }).ToList();
 
             return Json(new { ok = true, list });
         }

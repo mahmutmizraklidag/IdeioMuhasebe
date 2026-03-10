@@ -169,18 +169,17 @@
         data.list.forEach((x) => {
             const encoded = encodeURIComponent(JSON.stringify(x));
 
-            const warnHtml = x.lastPeriodWarning
-                ? `<div class="small text-warning mb-1">Son 1 dönem</div>`
-                : ``;
-
+            
+            const periodBadge = x.recurringPeriodText
+                ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+                : "";
             body.insertAdjacentHTML("beforeend", `
         <tr>
           <td class="text-muted">${app.formatDateTr(x.dueDate)}</td>
           <td><a href="/IncomeTypes/Details/${x.incomeTypeId}" class="link-light">${x.incomeType}</a></td>
-          <td class="fw-semibold">
-            ${warnHtml}
-            <div>${x.name}</div>
-          </td>
+          
+            <td class="fw-semibold">${x.name}${periodBadge}</td>
+          
           <td class="text-muted">${x.payer ?? ""}</td>
           <td class="text-end">${app.money(x.amount)}</td>
           <td class="text-end">${app.dueBadgeHtml(x.dueDate, x.isReceived)}</td>

@@ -33,14 +33,12 @@
 
         data.list.forEach(x => {
             const encoded = encodeURIComponent(JSON.stringify(x));
-            const badge = x.lastPeriodWarning
-                ? `<span class="badge bg-warning text-dark ms-2">Son 1 dönem</span>`
-                : ``;
+            
 
             body.insertAdjacentHTML("beforeend", `
         <tr>
           <td class="text-muted">${x.id}</td>
-          <td class="fw-semibold">${x.name}${badge}</td>
+          <td class="fw-semibold">${x.name}</td>
           <td class="text-end text-nowrap">
             <div class="d-inline-flex flex-nowrap gap-1">
               <button class="btn btn-sm btn-light py-1 px-2" data-act="detail" data-id="${x.id}">Detay</button>

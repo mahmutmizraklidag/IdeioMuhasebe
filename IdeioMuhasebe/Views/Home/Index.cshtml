@@ -86,6 +86,34 @@
     </div>
 </div>
 
+<!-- SEÇİLENLER -->
+<div class="row g-3 mb-3 d-none" id="selectedCardsRow">
+    <div class="col-12 col-lg-4">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="text-muted small">Seçilen Toplam Gelir</div>
+                <div class="fs-4 fw-semibold text-success" id="cSelInc">0 ₺</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="text-muted small">Seçilen Toplam Gider</div>
+                <div class="fs-4 fw-semibold text-danger" id="cSelExp">0 ₺</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card card-soft">
+            <div class="card-body">
+                <div class="text-muted small">Fark</div>
+                <div class="fs-4 fw-semibold text-primary" id="cSelDiff">0 ₺</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Yaklaşanlar -->
 <div class="row g-3">
     <div class="col-12 col-lg-6">
@@ -100,6 +128,12 @@
                     <table class="table align-middle">
                         <thead>
                             <tr class="text-muted small">
+                                <th style="width:70px">
+                                    <div class="form-check m-0">
+                                        <input class="form-check-input" type="checkbox" id="expSelectAll">
+                                        <label class="form-check-label small" for="expSelectAll">Tümü</label>
+                                    </div>
+                                </th>
                                 <th>Tarih</th>
                                 <th>Kategori</th>
                                 <th>Gider</th>
@@ -126,6 +160,12 @@
                     <table class="table align-middle">
                         <thead>
                             <tr class="text-muted small">
+                                <th style="width:70px">
+                                    <div class="form-check m-0">
+                                        <input class="form-check-input" type="checkbox" id="incSelectAll">
+                                        <label class="form-check-label small" for="incSelectAll">Tümü</label>
+                                    </div>
+                                </th>
                                 <th>Tarih</th>
                                 <th>Kategori</th>
                                 <th>Gelir</th>

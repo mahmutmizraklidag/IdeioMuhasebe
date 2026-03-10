@@ -49,6 +49,10 @@ namespace IdeioMuhasebe.Controllers
 
             var (f, toEx) = Range(from, to);
 
+            static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
+            static int MonthDiff(DateTime aMonth, DateTime bMonth)
+                => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
+
             var q = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
                 .Include(x => x.RecurringDebt)
@@ -60,7 +64,7 @@ namespace IdeioMuhasebe.Controllers
             if (isPaid.HasValue)
                 q = q.Where(x => x.IsPaid == isPaid.Value);
 
-            var list = await q.OrderBy(x => x.DueDate).ThenBy(x => x.Id)
+            var raw = await q.OrderBy(x => x.DueDate).ThenBy(x => x.Id)
                 .Select(x => new
                 {
                     id = x.Id,
@@ -68,19 +72,62 @@ namespace IdeioMuhasebe.Controllers
                     debtType = x.DebtType.Name,
                     name = x.Name,
 
-                    // ✅ yeni alanlar
                     netAmount = x.NetAmount,
                     taxAmount = x.TaxAmount,
                     amount = x.Amount,
 
+                    dueDateDt = x.DueDate, // hesap için
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     payee = x.Payee,
                     isPaid = x.IsPaid,
 
                     recurringDebtId = x.RecurringDebtId,
-                    recurringPeriodCount = x.RecurringDebt != null ? x.RecurringDebt.PeriodCount : null
+                    recurringStartDate = x.RecurringDebt != null ? (DateTime?)x.RecurringDebt.StartDate : null,
+                    recurringPeriodCount = x.RecurringDebt != null ? x.RecurringDebt.PeriodCount : (int?)null
                 })
                 .ToListAsync();
+
+            var list = raw.Select(x =>
+            {
+                string? periodText = null;
+
+                if (x.recurringDebtId.HasValue &&
+                    x.recurringStartDate.HasValue &&
+                    x.recurringPeriodCount.HasValue &&
+                    x.recurringPeriodCount.Value > 0)
+                {
+                    var startM = MonthStart(x.recurringStartDate.Value);
+                    var dueM = MonthStart(x.dueDateDt);
+
+                    var idx = MonthDiff(startM, dueM) + 1; // 1-based
+                    if (idx < 1) idx = 1;
+                    if (idx > x.recurringPeriodCount.Value) idx = x.recurringPeriodCount.Value;
+
+                    periodText = $"{idx}/{x.recurringPeriodCount.Value}";
+                }
+
+                return new
+                {
+                    x.id,
+                    x.debtTypeId,
+                    x.debtType,
+                    x.name,
+
+                    x.netAmount,
+                    x.taxAmount,
+                    x.amount,
+
+                    x.dueDate,
+                    x.payee,
+                    x.isPaid,
+
+                    x.recurringDebtId,
+                    x.recurringPeriodCount,
+
+                    // ✅ frontend bunu gösterecek
+                    recurringPeriodText = periodText
+                };
+            }).ToList();
 
             return Json(new { ok = true, list });
         }
