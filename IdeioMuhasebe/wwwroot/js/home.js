@@ -1,127 +1,217 @@
 ﻿(() => {
-    const from = document.getElementById("fromDate");
-    const to = document.getElementById("toDate");
-    const btn = document.getElementById("btnApply");
+  const from = document.getElementById("fromDate");
+  const to = document.getElementById("toDate");
+  const btn = document.getElementById("btnApply");
 
-    const debtTypeFilter = document.getElementById("debtTypeFilter");
-    const incomeTypeFilter = document.getElementById("incomeTypeFilter");
+  const debtTypeFilter = document.getElementById("debtTypeFilter");
+  const incomeTypeFilter = document.getElementById("incomeTypeFilter");
 
-    const expBody = document.getElementById("expBody");
-    const incBody = document.getElementById("incBody");
-    const expCount = document.getElementById("expCount");
-    const incCount = document.getElementById("incCount");
+  const expBody = document.getElementById("expBody");
+  const incBody = document.getElementById("incBody");
+  const expCount = document.getElementById("expCount");
+  const incCount = document.getElementById("incCount");
 
-    const expSelectAll = document.getElementById("expSelectAll");
-    const incSelectAll = document.getElementById("incSelectAll");
+  const expSelectAll = document.getElementById("expSelectAll");
+  const incSelectAll = document.getElementById("incSelectAll");
 
-    const cSelExp = document.getElementById("cSelExp");
-    const cSelInc = document.getElementById("cSelInc");
-    const cSelDiff = document.getElementById("cSelDiff");
+  const cSelExp = document.getElementById("cSelExp");
+  const cSelInc = document.getElementById("cSelInc");
+  const cSelDiff = document.getElementById("cSelDiff");
+  const selectedCardsRow = document.getElementById("selectedCardsRow");
 
-    const selectedCardsRow = document.getElementById("selectedCardsRow");
+  // Kategori popup elemanları
+  const expCatToggle = document.getElementById("expCatToggle");
+  const incCatToggle = document.getElementById("incCatToggle");
 
-    app.setDefaultMonth(from, to);
+  const expCatPanel = document.getElementById("expCatPanel");
+  const incCatPanel = document.getElementById("incCatPanel");
 
-    const loadDebtTypes = async () => {
-        const data = await app.get("/DebtTypes/Options");
-        debtTypeFilter.innerHTML =
-            `<option value="">Tümü</option>` +
-            data.list.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
-    };
+  const expCatList = document.getElementById("expCatList");
+  const incCatList = document.getElementById("incCatList");
 
-    const loadIncomeTypes = async () => {
-        const data = await app.get("/IncomeTypes/Options");
-        incomeTypeFilter.innerHTML =
-            `<option value="">Tümü</option>` +
-            data.list.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
-    };
+  const expCatClear = document.getElementById("expCatClear");
+  const incCatClear = document.getElementById("incCatClear");
 
-    const updateSelectCards = () => {
-        const expChecks = [...document.querySelectorAll(".exp-check:checked")];
-        const incChecks = [...document.querySelectorAll(".inc-check:checked")];
+  const expCatSelectAll = document.getElementById("expCatSelectAll");
+  const incCatSelectAll = document.getElementById("incCatSelectAll");
 
-        const expTotal = expChecks.reduce((sum, x) => sum + Number(x.dataset.amount || 0), 0);
-        const incTotal = incChecks.reduce((sum, x) => sum + Number(x.dataset.amount || 0), 0);
-        const diff = incTotal - expTotal;
+  app.setDefaultMonth(from, to);
 
-        const hasAnySelection = expChecks.length > 0 || incChecks.length > 0;
-        selectedCardsRow.classList.toggle("d-none", !hasAnySelection);
+  let allUpcomingExpenses = [];
+  let allUpcomingIncomes = [];
 
-        cSelExp.textContent = app.money(expTotal);
-        cSelInc.textContent = app.money(incTotal);
-        cSelDiff.textContent = app.money(diff);
+  let expenseCategories = [];
+  let incomeCategories = [];
 
-        cSelDiff.classList.remove("text-success", "text-danger", "text-primary");
-        if (diff > 0) cSelDiff.classList.add("text-success");
-        else if (diff < 0) cSelDiff.classList.add("text-danger");
-        else cSelDiff.classList.add("text-primary");
-    };
+  let selectedExpenseCategoryIds = new Set();
+  let selectedIncomeCategoryIds = new Set();
 
-    const syncSelectAllState = () => {
-        const expChecks = [...document.querySelectorAll(".exp-check")];
-        const incChecks = [...document.querySelectorAll(".inc-check")];
+  const loadDebtTypes = async () => {
+    const data = await app.get("/DebtTypes/Options");
+    debtTypeFilter.innerHTML =
+      `<option value="">Tümü</option>` +
+      data.list.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+  };
 
-        if (expChecks.length === 0) {
-            expSelectAll.checked = false;
-            expSelectAll.indeterminate = false;
-        } else {
-            const checkedCount = expChecks.filter(x => x.checked).length;
-            expSelectAll.checked = checkedCount === expChecks.length;
-            expSelectAll.indeterminate = checkedCount > 0 && checkedCount < expChecks.length;
-        }
+  const loadIncomeTypes = async () => {
+    const data = await app.get("/IncomeTypes/Options");
+    incomeTypeFilter.innerHTML =
+      `<option value="">Tümü</option>` +
+      data.list.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+  };
 
-        if (incChecks.length === 0) {
-            incSelectAll.checked = false;
-            incSelectAll.indeterminate = false;
-        } else {
-            const checkedCount = incChecks.filter(x => x.checked).length;
-            incSelectAll.checked = checkedCount === incChecks.length;
-            incSelectAll.indeterminate = checkedCount > 0 && checkedCount < incChecks.length;
-        }
-    };
+  const resetSelectCards = () => {
+    expSelectAll.checked = false;
+    expSelectAll.indeterminate = false;
+    incSelectAll.checked = false;
+    incSelectAll.indeterminate = false;
 
-    const resetSelectCards = () => {
-        expSelectAll.checked = false;
-        expSelectAll.indeterminate = false;
-        incSelectAll.checked = false;
-        incSelectAll.indeterminate = false;
+    selectedCardsRow.classList.add("d-none");
 
-        selectedCardsRow.classList.add("d-none");
+    cSelExp.textContent = app.money(0);
+    cSelInc.textContent = app.money(0);
+    cSelDiff.textContent = app.money(0);
+    cSelDiff.classList.remove("text-success", "text-danger");
+    cSelDiff.classList.add("text-primary");
+  };
 
-        cSelExp.textContent = app.money(0);
-        cSelInc.textContent = app.money(0);
-        cSelDiff.textContent = app.money(0);
-        cSelDiff.classList.remove("text-success", "text-danger");
-        cSelDiff.classList.add("text-primary");
-    };
+  const updateSelectCards = () => {
+    const expChecks = [...document.querySelectorAll(".exp-check:checked")];
+    const incChecks = [...document.querySelectorAll(".inc-check:checked")];
 
-    const load = async () => {
-        const data = await app.get("/Home/Summary", {
-            from: from.value,
-            to: to.value,
-            debtTypeId: debtTypeFilter.value,
-            incomeTypeId: incomeTypeFilter.value
+    const expTotal = expChecks.reduce((sum, x) => sum + Number(x.dataset.amount || 0), 0);
+    const incTotal = incChecks.reduce((sum, x) => sum + Number(x.dataset.amount || 0), 0);
+    const diff = incTotal - expTotal;
+
+    const hasAnySelection = expChecks.length > 0 || incChecks.length > 0;
+    selectedCardsRow.classList.toggle("d-none", !hasAnySelection);
+
+    cSelExp.textContent = app.money(expTotal);
+    cSelInc.textContent = app.money(incTotal);
+    cSelDiff.textContent = app.money(diff);
+
+    cSelDiff.classList.remove("text-success", "text-danger", "text-primary");
+    if (diff > 0) cSelDiff.classList.add("text-success");
+    else if (diff < 0) cSelDiff.classList.add("text-danger");
+    else cSelDiff.classList.add("text-primary");
+  };
+
+  const syncSelectAllState = () => {
+    const expChecks = [...document.querySelectorAll(".exp-check")];
+    const incChecks = [...document.querySelectorAll(".inc-check")];
+
+    if (expChecks.length === 0) {
+      expSelectAll.checked = false;
+      expSelectAll.indeterminate = false;
+    } else {
+      const checkedCount = expChecks.filter(x => x.checked).length;
+      expSelectAll.checked = checkedCount === expChecks.length;
+      expSelectAll.indeterminate = checkedCount > 0 && checkedCount < expChecks.length;
+    }
+
+    if (incChecks.length === 0) {
+      incSelectAll.checked = false;
+      incSelectAll.indeterminate = false;
+    } else {
+      const checkedCount = incChecks.filter(x => x.checked).length;
+      incSelectAll.checked = checkedCount === incChecks.length;
+      incSelectAll.indeterminate = checkedCount > 0 && checkedCount < incChecks.length;
+    }
+  };
+
+  const buildExpenseCategories = () => {
+    const map = new Map();
+    allUpcomingExpenses.forEach(x => {
+      if (!map.has(x.debtTypeId)) {
+        map.set(x.debtTypeId, {
+          id: x.debtTypeId,
+          name: x.debtType
         });
+      }
+    });
 
-        // Üst kartlar
-        document.getElementById("cExpTotal").textContent = app.money(data.cards.expenseTotal);
-        document.getElementById("cExpPaid").textContent = app.money(data.cards.expensePaid);
-        document.getElementById("cExpRemaining").textContent = app.money(data.cards.expenseRemaining);
+    expenseCategories = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "tr"));
+    selectedExpenseCategoryIds = new Set(expenseCategories.map(x => x.id));
+    renderExpenseCategoryPanel();
+  };
 
-        document.getElementById("cIncTotal").textContent = app.money(data.cards.incomeTotal);
-        document.getElementById("cIncReceived").textContent = app.money(data.cards.incomeReceived);
-        document.getElementById("cIncRemaining").textContent = app.money(data.cards.incomeRemaining);
+  const buildIncomeCategories = () => {
+    const map = new Map();
+    allUpcomingIncomes.forEach(x => {
+      if (!map.has(x.incomeTypeId)) {
+        map.set(x.incomeTypeId, {
+          id: x.incomeTypeId,
+          name: x.incomeType
+        });
+      }
+    });
 
-        // Yaklaşan giderler
-        expBody.innerHTML = "";
-        expCount.textContent = data.upcomingExpenses.length;
+    incomeCategories = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "tr"));
+    selectedIncomeCategoryIds = new Set(incomeCategories.map(x => x.id));
+    renderIncomeCategoryPanel();
+  };
 
-        data.upcomingExpenses.forEach(x => {
-            const periodBadge = x.recurringPeriodText
-                ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
-                : "";
+  const renderExpenseCategoryPanel = () => {
+    expCatList.innerHTML = expenseCategories.map(x => `
+      <label class="form-check m-0">
+        <input
+          class="form-check-input exp-cat-check"
+          type="checkbox"
+          value="${x.id}"
+          ${selectedExpenseCategoryIds.has(x.id) ? "checked" : ""}>
+        <span class="form-check-label">${x.name}</span>
+      </label>
+    `).join("");
 
-            expBody.insertAdjacentHTML("beforeend", `
+    const total = expenseCategories.length;
+    const selected = selectedExpenseCategoryIds.size;
+
+    expCatSelectAll.checked = total > 0 && selected === total;
+    expCatSelectAll.indeterminate = selected > 0 && selected < total;
+  };
+
+  const renderIncomeCategoryPanel = () => {
+    incCatList.innerHTML = incomeCategories.map(x => `
+      <label class="form-check m-0">
+        <input
+          class="form-check-input inc-cat-check"
+          type="checkbox"
+          value="${x.id}"
+          ${selectedIncomeCategoryIds.has(x.id) ? "checked" : ""}>
+        <span class="form-check-label">${x.name}</span>
+      </label>
+    `).join("");
+
+    const total = incomeCategories.length;
+    const selected = selectedIncomeCategoryIds.size;
+
+    incCatSelectAll.checked = total > 0 && selected === total;
+    incCatSelectAll.indeterminate = selected > 0 && selected < total;
+  };
+
+  const renderExpenses = () => {
+    const filtered = allUpcomingExpenses.filter(x => selectedExpenseCategoryIds.has(x.debtTypeId));
+
+    expBody.innerHTML = "";
+    expCount.textContent = filtered.length;
+
+    if (filtered.length === 0) {
+      expBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">Kayıt bulunamadı.</td>
+        </tr>
+      `;
+      resetSelectCards();
+      syncSelectAllState();
+      return;
+    }
+
+    filtered.forEach(x => {
+      const periodBadge = x.recurringPeriodText
+        ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+        : "";
+
+      expBody.insertAdjacentHTML("beforeend", `
         <tr>
           <td>
             <input
@@ -137,18 +227,35 @@
           <td class="text-end">${app.dueBadgeHtml(x.dueDate, false)}</td>
         </tr>
       `);
-        });
+    });
 
-        // Yaklaşan gelirler
-        incBody.innerHTML = "";
-        incCount.textContent = data.upcomingIncomes.length;
+    resetSelectCards();
+    syncSelectAllState();
+  };
 
-        data.upcomingIncomes.forEach(x => {
-            const periodBadge = x.recurringPeriodText
-                ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
-                : "";
+  const renderIncomes = () => {
+    const filtered = allUpcomingIncomes.filter(x => selectedIncomeCategoryIds.has(x.incomeTypeId));
 
-            incBody.insertAdjacentHTML("beforeend", `
+    incBody.innerHTML = "";
+    incCount.textContent = filtered.length;
+
+    if (filtered.length === 0) {
+      incBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">Kayıt bulunamadı.</td>
+        </tr>
+      `;
+      resetSelectCards();
+      syncSelectAllState();
+      return;
+    }
+
+    filtered.forEach(x => {
+      const periodBadge = x.recurringPeriodText
+        ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+        : "";
+
+      incBody.insertAdjacentHTML("beforeend", `
         <tr>
           <td>
             <input
@@ -164,52 +271,196 @@
           <td class="text-end">${app.dueBadgeHtml(x.dueDate, false)}</td>
         </tr>
       `);
-        });
+    });
 
-        resetSelectCards();
-        syncSelectAllState();
-        updateSelectCards();
+    resetSelectCards();
+    syncSelectAllState();
+  };
+    const positionPanelUnderButton = (panel, button) => {
+        const rect = button.getBoundingClientRect();
+
+        panel.style.left = `${rect.left}px`;
+        panel.style.top = `${rect.bottom + 8}px`;
     };
 
-    // Tekil seçimler
-    expBody.addEventListener("change", (e) => {
-        if (!e.target.classList.contains("exp-check")) return;
-        syncSelectAllState();
-        updateSelectCards();
+    const repositionOpenPanels = () => {
+        if (!expCatPanel.classList.contains("d-none")) {
+            positionPanelUnderButton(expCatPanel, expCatToggle);
+        }
+
+        if (!incCatPanel.classList.contains("d-none")) {
+            positionPanelUnderButton(incCatPanel, incCatToggle);
+        }
+    };
+  const closeCategoryPanels = () => {
+    expCatPanel.classList.add("d-none");
+    incCatPanel.classList.add("d-none");
+  };
+
+  const load = async () => {
+    const data = await app.get("/Home/Summary", {
+      from: from.value,
+      to: to.value,
+      debtTypeId: debtTypeFilter.value,
+      incomeTypeId: incomeTypeFilter.value
     });
 
-    incBody.addEventListener("change", (e) => {
-        if (!e.target.classList.contains("inc-check")) return;
-        syncSelectAllState();
-        updateSelectCards();
+    // Üst kartlar
+    document.getElementById("cExpTotal").textContent = app.money(data.cards.expenseTotal);
+    document.getElementById("cExpPaid").textContent = app.money(data.cards.expensePaid);
+    document.getElementById("cExpRemaining").textContent = app.money(data.cards.expenseRemaining);
+
+    document.getElementById("cIncTotal").textContent = app.money(data.cards.incomeTotal);
+    document.getElementById("cIncReceived").textContent = app.money(data.cards.incomeReceived);
+    document.getElementById("cIncRemaining").textContent = app.money(data.cards.incomeRemaining);
+
+    allUpcomingExpenses = data.upcomingExpenses || [];
+    allUpcomingIncomes = data.upcomingIncomes || [];
+
+    buildExpenseCategories();
+    buildIncomeCategories();
+
+    renderExpenses();
+    renderIncomes();
+
+    closeCategoryPanels();
+  };
+
+  // Tekil satır seçimleri
+  expBody.addEventListener("change", (e) => {
+    if (!e.target.classList.contains("exp-check")) return;
+    syncSelectAllState();
+    updateSelectCards();
+  });
+
+  incBody.addEventListener("change", (e) => {
+    if (!e.target.classList.contains("inc-check")) return;
+    syncSelectAllState();
+    updateSelectCards();
+  });
+
+  // Tüm satırları seç
+  expSelectAll.addEventListener("change", () => {
+    document.querySelectorAll(".exp-check").forEach(x => {
+      x.checked = expSelectAll.checked;
+    });
+    syncSelectAllState();
+    updateSelectCards();
+  });
+
+  incSelectAll.addEventListener("change", () => {
+    document.querySelectorAll(".inc-check").forEach(x => {
+      x.checked = incSelectAll.checked;
+    });
+    syncSelectAllState();
+    updateSelectCards();
+  });
+
+  // Kategori popup aç/kapat
+    expCatToggle.addEventListener("click", () => {
+        incCatPanel.classList.add("d-none");
+
+        const willOpen = expCatPanel.classList.contains("d-none");
+        expCatPanel.classList.toggle("d-none");
+
+        if (willOpen) {
+            positionPanelUnderButton(expCatPanel, expCatToggle);
+        }
     });
 
-    // Tümünü seç
-    expSelectAll.addEventListener("change", () => {
-        document.querySelectorAll(".exp-check").forEach(x => {
-            x.checked = expSelectAll.checked;
-        });
-        syncSelectAllState();
-        updateSelectCards();
+    incCatToggle.addEventListener("click", () => {
+        expCatPanel.classList.add("d-none");
+
+        const willOpen = incCatPanel.classList.contains("d-none");
+        incCatPanel.classList.toggle("d-none");
+
+        if (willOpen) {
+            positionPanelUnderButton(incCatPanel, incCatToggle);
+        }
     });
 
-    incSelectAll.addEventListener("change", () => {
-        document.querySelectorAll(".inc-check").forEach(x => {
-            x.checked = incSelectAll.checked;
-        });
-        syncSelectAllState();
-        updateSelectCards();
-    });
+  // Popup dışına tıklayınca kapat
+  document.addEventListener("click", (e) => {
+    const expInside = expCatPanel.contains(e.target) || expCatToggle.contains(e.target);
+    const incInside = incCatPanel.contains(e.target) || incCatToggle.contains(e.target);
 
-    btn.addEventListener("click", load);
-    debtTypeFilter.addEventListener("change", load);
-    incomeTypeFilter.addEventListener("change", load);
-    from.addEventListener("change", load);
-    to.addEventListener("change", load);
+    if (!expInside) expCatPanel.classList.add("d-none");
+    if (!incInside) incCatPanel.classList.add("d-none");
+  });
 
-    (async () => {
-        await loadDebtTypes();
-        await loadIncomeTypes();
-        await load();
-    })();
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeCategoryPanels();
+  });
+    window.addEventListener("resize", repositionOpenPanels);
+    window.addEventListener("scroll", repositionOpenPanels, true);
+  // Gider kategori seçimleri
+  expCatPanel.addEventListener("change", (e) => {
+    if (e.target.id === "expCatSelectAll") {
+      if (e.target.checked) {
+        selectedExpenseCategoryIds = new Set(expenseCategories.map(x => x.id));
+      } else {
+        selectedExpenseCategoryIds = new Set();
+      }
+      renderExpenseCategoryPanel();
+      renderExpenses();
+      return;
+    }
+
+    if (e.target.classList.contains("exp-cat-check")) {
+      const id = Number(e.target.value);
+      if (e.target.checked) selectedExpenseCategoryIds.add(id);
+      else selectedExpenseCategoryIds.delete(id);
+
+      renderExpenseCategoryPanel();
+      renderExpenses();
+    }
+  });
+
+  // Gelir kategori seçimleri
+  incCatPanel.addEventListener("change", (e) => {
+    if (e.target.id === "incCatSelectAll") {
+      if (e.target.checked) {
+        selectedIncomeCategoryIds = new Set(incomeCategories.map(x => x.id));
+      } else {
+        selectedIncomeCategoryIds = new Set();
+      }
+      renderIncomeCategoryPanel();
+      renderIncomes();
+      return;
+    }
+
+    if (e.target.classList.contains("inc-cat-check")) {
+      const id = Number(e.target.value);
+      if (e.target.checked) selectedIncomeCategoryIds.add(id);
+      else selectedIncomeCategoryIds.delete(id);
+
+      renderIncomeCategoryPanel();
+      renderIncomes();
+    }
+  });
+
+  // Tümü butonları
+  expCatClear.addEventListener("click", () => {
+    selectedExpenseCategoryIds = new Set(expenseCategories.map(x => x.id));
+    renderExpenseCategoryPanel();
+    renderExpenses();
+  });
+
+  incCatClear.addEventListener("click", () => {
+    selectedIncomeCategoryIds = new Set(incomeCategories.map(x => x.id));
+    renderIncomeCategoryPanel();
+    renderIncomes();
+  });
+
+  btn.addEventListener("click", load);
+  debtTypeFilter.addEventListener("change", load);
+  incomeTypeFilter.addEventListener("change", load);
+  from.addEventListener("change", load);
+  to.addEventListener("change", load);
+
+  (async () => {
+    await loadDebtTypes();
+    await loadIncomeTypes();
+    await load();
+  })();
 })();
