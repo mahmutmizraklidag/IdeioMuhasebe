@@ -91,6 +91,7 @@ namespace IdeioMuhasebe.Services
                         NetAmount = r.NetAmount,
                         TaxAmount = r.TaxAmount,
                         Amount = r.NetAmount + r.TaxAmount,
+                        PaidAmount = 0m,
 
                         DueDate = due.Date,
                         Payee = r.Payee,

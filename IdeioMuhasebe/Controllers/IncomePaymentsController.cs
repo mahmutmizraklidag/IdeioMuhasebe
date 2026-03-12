@@ -94,7 +94,8 @@ namespace IdeioMuhasebe.Controllers
                 {
                     id = x.Id,
                     name = x.Name,
-                    amount = x.Amount,
+                    totalAmount = x.Amount,
+                    receivedAmount = x.ReceivedAmount,
                     dueDateDt = x.DueDate,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     incomeType = x.IncomeType.Name,
@@ -109,6 +110,9 @@ namespace IdeioMuhasebe.Controllers
 
             var list = raw.Select(x =>
             {
+                var received = x.receivedAmount < 0 ? 0m : (x.receivedAmount > x.totalAmount ? x.totalAmount : x.receivedAmount);
+                var remaining = x.totalAmount - received;
+
                 string? periodText = null;
 
                 if (x.recurringIncomeId.HasValue &&
@@ -130,7 +134,10 @@ namespace IdeioMuhasebe.Controllers
                 {
                     x.id,
                     x.name,
-                    x.amount,
+                    amount = remaining,
+                    totalAmount = x.totalAmount,
+                    receivedAmount = received,
+                    remainingAmount = remaining,
                     x.dueDate,
                     x.incomeType,
                     x.incomeTypeId,
@@ -149,16 +156,89 @@ namespace IdeioMuhasebe.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SetReceived([FromBody] SetReceivedVm vm)
+        public async Task<IActionResult> SetReceived([FromBody] IdeioMuhasebe.Models.SetReceivedVm vm)
         {
-            var ent = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == vm.Id);
-            if (ent == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+            if (vm == null || vm.Id <= 0)
+                return BadRequest(new { ok = false, message = "Geçersiz istek." });
 
-            ent.IsReceived = vm.IsReceived;
+            var ent = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == vm.Id);
+            if (ent == null)
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+
+            if (vm.IsReceived)
+            {
+                ent.IsReceived = true;
+                ent.ReceivedAmount = ent.Amount;
+            }
+            else
+            {
+                ent.IsReceived = false;
+
+                if (ent.ReceivedAmount >= ent.Amount)
+                    ent.ReceivedAmount = 0m;
+            }
+
             ent.UpdatedDate = DateTime.Now;
             await _db.SaveChangesAsync();
 
             return Json(new { ok = true });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> AddPartialReceive([FromBody] IdeioMuhasebe.Models.PartialAmountVM vm)
+        {
+            if (vm == null || vm.Id <= 0)
+                return BadRequest(new { ok = false, message = "Geçersiz istek." });
+
+            if (vm.Amount <= 0)
+                return BadRequest(new { ok = false, message = "Tutar 0'dan büyük olmalı." });
+
+            var ent = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == vm.Id);
+            if (ent == null)
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+
+            if (ent.IsReceived)
+                return BadRequest(new { ok = false, message = "Bu kayıt zaten tahsil edildi." });
+
+            var currentReceived = ent.ReceivedAmount < 0 ? 0m : ent.ReceivedAmount;
+            if (currentReceived > ent.Amount) currentReceived = ent.Amount;
+
+            var remaining = ent.Amount - currentReceived;
+
+            // ✅ artık clamp yok, fazla girilirse reddet
+            if (vm.Amount > remaining)
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    message = $"Gelir tutarından daha büyük bir tahsilat girdiniz. Kalan tutar: {remaining:N2} ₺"
+                });
+            }
+
+            ent.ReceivedAmount = currentReceived + vm.Amount;
+
+            // ✅ toplam tamamlandıysa otomatik tahsil edildi yap
+            if (ent.ReceivedAmount >= ent.Amount)
+            {
+                ent.ReceivedAmount = ent.Amount;
+                ent.IsReceived = true;
+            }
+            else
+            {
+                ent.IsReceived = false;
+            }
+
+            ent.UpdatedDate = DateTime.Now;
+            await _db.SaveChangesAsync();
+
+            return Json(new
+            {
+                ok = true,
+                receivedAmount = ent.ReceivedAmount,
+                remainingAmount = ent.Amount - ent.ReceivedAmount,
+                fullyCovered = ent.IsReceived
+            });
         }
 
         public class SetReceivedVm

@@ -24,7 +24,8 @@ namespace IdeioMuhasebe.Entities
         // ✅ YENİ: Vergi
         [Column(TypeName = "decimal(18,2)")]
         public decimal TaxAmount { get; set; }
-
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? PaidAmount { get; set; }
         [Required]
         [DataType(DataType.Date)]
         [Display(Name = "Son Ödeme Tarihi")]

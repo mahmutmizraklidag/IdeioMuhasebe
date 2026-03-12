@@ -57,15 +57,15 @@ namespace IdeioMuhasebe.Controllers
         // =========================================================
         [HttpGet]
         public async Task<IActionResult> DataV2(
-            DateTime? from,
-            DateTime? to,
-            string mode = "expense",
-            int? debtTypeId = null,
-            int? incomeTypeId = null,
-            string expenseStatus = "total",
-            string incomeStatus = "total",
-            string expenseKind = "total" // total | normal | tax_total | tax_debt | tax_income
-        )
+     DateTime? from,
+     DateTime? to,
+     string mode = "expense",
+     int? debtTypeId = null,
+     int? incomeTypeId = null,
+     string expenseStatus = "total",
+     string incomeStatus = "total",
+     string expenseKind = "total" // total | normal | tax_total | tax_debt | tax_income
+ )
         {
             var (f, toEx) = Range(from, to);
             var months = MonthsBetween(f, toEx);
@@ -75,211 +75,189 @@ namespace IdeioMuhasebe.Controllers
             expenseKind = (expenseKind ?? "total").ToLowerInvariant();
             mode = (mode ?? "expense").ToLowerInvariant();
 
-            if (expenseKind == "tax") expenseKind = "tax_total"; // backward
+            if (expenseKind == "tax") expenseKind = "tax_total";
 
-            // Debts base query
-            IQueryable<Debt> debtQ = _db.Debts.AsNoTracking()
+            var debtQ = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
                 .Where(x => x.DueDate >= f && x.DueDate < toEx);
 
             if (debtTypeId.HasValue && debtTypeId.Value > 0)
                 debtQ = debtQ.Where(x => x.DebtTypeId == debtTypeId.Value);
 
-            if (expenseStatus == "paid") debtQ = debtQ.Where(x => x.IsPaid);
-            else if (expenseStatus == "unpaid") debtQ = debtQ.Where(x => !x.IsPaid);
-
-            // Normal gider = debt net (eski kayıt uyumu)
-            var normalMonthlyMap = await debtQ
-                .GroupBy(x => new { x.DueDate.Year, x.DueDate.Month })
-                .Select(g => new
-                {
-                    g.Key.Year,
-                    g.Key.Month,
-                    Total = g.Sum(x => (x.NetAmount == 0m && x.TaxAmount == 0m) ? x.Amount : x.NetAmount)
-                })
-                .ToListAsync();
-
-            var normalMonthlyDict = normalMonthlyMap.ToDictionary(
-                x => $"{x.Year:D4}-{x.Month:D2}",
-                x => x.Total
-            );
-
-            var normalByType = await debtQ
-                .GroupBy(x => x.DebtType.Name)
-                .Select(g => new
-                {
-                    type = g.Key,
-                    total = g.Sum(x => (x.NetAmount == 0m && x.TaxAmount == 0m) ? x.Amount : x.NetAmount)
-                })
-                .OrderByDescending(x => x.total)
-                .ToListAsync();
-
-            // debt tax
-            var debtTaxMonthlyMap = await debtQ
-                .GroupBy(x => new { x.DueDate.Year, x.DueDate.Month })
-                .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.TaxAmount) })
-                .ToListAsync();
-
-            var debtTaxMonthlyDict = debtTaxMonthlyMap.ToDictionary(
-                x => $"{x.Year:D4}-{x.Month:D2}",
-                x => x.Total
-            );
-
-            var debtTaxTotal = debtTaxMonthlyMap.Sum(x => x.Total);
-
-            // income tax query
-            IQueryable<Income> incomeTaxQ = _db.Incomes.AsNoTracking()
-                .Include(x => x.IncomeType)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
-
-            if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
-                incomeTaxQ = incomeTaxQ.Where(x => x.IncomeTypeId == incomeTypeId.Value);
-
-            if (incomeStatus == "paid") incomeTaxQ = incomeTaxQ.Where(x => x.IsReceived);
-            else if (incomeStatus == "unpaid") incomeTaxQ = incomeTaxQ.Where(x => !x.IsReceived);
-
-            var incomeTaxMonthlyMap = await incomeTaxQ
-                .GroupBy(x => new { x.DueDate.Year, x.DueDate.Month })
-                .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.TaxAmount) })
-                .ToListAsync();
-
-            var incomeTaxMonthlyDict = incomeTaxMonthlyMap.ToDictionary(
-                x => $"{x.Year:D4}-{x.Month:D2}",
-                x => x.Total
-            );
-
-            var incomeTaxTotal = incomeTaxMonthlyMap.Sum(x => x.Total);
-
-            decimal GetDebtTax(string key) => debtTaxMonthlyDict.TryGetValue(key, out var v) ? v : 0m;
-            decimal GetIncomeTax(string key) => incomeTaxMonthlyDict.TryGetValue(key, out var v) ? v : 0m;
-
-            decimal GetSelectedTax(string key)
-            {
-                var dt = GetDebtTax(key);
-                var it = GetIncomeTax(key);
-
-                return expenseKind switch
-                {
-                    "tax_debt" => dt,
-                    "tax_income" => it,
-                    "tax_total" => dt + it,
-                    _ => dt + it
-                };
-            }
-
-            var expenseMonthly = months.Select(m =>
-            {
-                var key = $"{m.Year:D4}-{m.Month:D2}";
-                var normal = normalMonthlyDict.TryGetValue(key, out var nv) ? nv : 0m;
-
-                var fullTax = GetDebtTax(key) + GetIncomeTax(key);
-                var selectedTax = GetSelectedTax(key);
-
-                decimal v = expenseKind switch
-                {
-                    "normal" => normal,
-                    "tax_debt" => selectedTax,
-                    "tax_income" => selectedTax,
-                    "tax_total" => selectedTax,
-                    _ => normal + fullTax
-                };
-
-                return (object)new { month = key, total = v };
-            }).ToList();
-
-            List<object> expenseByType;
-            if (expenseKind == "normal")
-            {
-                expenseByType = normalByType.Cast<object>().ToList();
-            }
-            else if (expenseKind == "tax_debt")
-            {
-                expenseByType = new List<object>();
-                if (debtTaxTotal > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTaxTotal });
-            }
-            else if (expenseKind == "tax_income")
-            {
-                expenseByType = new List<object>();
-                if (incomeTaxTotal > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTaxTotal });
-            }
-            else if (expenseKind == "tax_total")
-            {
-                expenseByType = new List<object>();
-                if (debtTaxTotal > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTaxTotal });
-                if (incomeTaxTotal > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTaxTotal });
-            }
-            else
-            {
-                expenseByType = normalByType.Cast<object>().ToList();
-                if (debtTaxTotal > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTaxTotal });
-                if (incomeTaxTotal > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTaxTotal });
-            }
-
-            // INCOME (toplam)
-            IQueryable<Income> incomeQ = _db.Incomes.AsNoTracking()
+            var incomeQ = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
                 .Where(x => x.DueDate >= f && x.DueDate < toEx);
 
             if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
                 incomeQ = incomeQ.Where(x => x.IncomeTypeId == incomeTypeId.Value);
 
-            if (incomeStatus == "paid") incomeQ = incomeQ.Where(x => x.IsReceived);
-            else if (incomeStatus == "unpaid") incomeQ = incomeQ.Where(x => !x.IsReceived);
-
-            var incomeMonthlyMap = await incomeQ
-                .GroupBy(x => new { x.DueDate.Year, x.DueDate.Month })
-                .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.Amount) })
+            var debts = await debtQ
+                .Select(x => new DebtStatRow
+                {
+                    DueDate = x.DueDate,
+                    Type = x.DebtType.Name,
+                    Amount = x.Amount,
+                    NetAmount = x.NetAmount,
+                    TaxAmount = x.TaxAmount,
+                    PaidAmount = x.PaidAmount ?? 0
+                })
                 .ToListAsync();
 
-            var incomeMonthlyDict = incomeMonthlyMap.ToDictionary(
-                x => $"{x.Year:D4}-{x.Month:D2}",
-                x => x.Total
-            );
+            var incomes = await incomeQ
+                .Select(x => new IncomeStatRow
+                {
+                    DueDate = x.DueDate,
+                    Type = x.IncomeType.Name,
+                    Amount = x.Amount,
+                    TaxAmount = x.TaxAmount,
+                    ReceivedAmount = x.ReceivedAmount
+                })
+                .ToListAsync();
+
+            var expenseMonthly = months.Select(m =>
+            {
+                var debtMonth = debts.Where(x => MonthStart(x.DueDate) == m).ToList();
+                var incomeMonth = incomes.Where(x => MonthStart(x.DueDate) == m).ToList();
+
+                var normal = debtMonth.Sum(x => DebtNormalByStatus(x, expenseStatus));
+                var debtTax = debtMonth.Sum(x => DebtTaxByStatus(x, expenseStatus));
+                var incomeTax = incomeMonth.Sum(x => IncomeTaxByStatus(x, incomeStatus));
+
+                decimal total = expenseKind switch
+                {
+                    "normal" => normal,
+                    "tax_debt" => debtTax,
+                    "tax_income" => incomeTax,
+                    "tax_total" => debtTax + incomeTax,
+                    _ => normal + debtTax + incomeTax
+                };
+
+                return (object)new
+                {
+                    month = $"{m.Year:D4}-{m.Month:D2}",
+                    total
+                };
+            }).ToList();
+
+            List<object> expenseByType;
+            if (expenseKind == "normal")
+            {
+                expenseByType = debts
+                    .GroupBy(x => x.Type)
+                    .Select(g => new
+                    {
+                        type = g.Key,
+                        total = g.Sum(x => DebtNormalByStatus(x, expenseStatus))
+                    })
+                    .Where(x => x.total > 0)
+                    .OrderByDescending(x => x.total)
+                    .Cast<object>()
+                    .ToList();
+            }
+            else if (expenseKind == "tax_debt")
+            {
+                var v = debts.Sum(x => DebtTaxByStatus(x, expenseStatus));
+                expenseByType = new List<object>();
+                if (v > 0) expenseByType.Add(new { type = "Gider Vergisi", total = v });
+            }
+            else if (expenseKind == "tax_income")
+            {
+                var v = incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus));
+                expenseByType = new List<object>();
+                if (v > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = v });
+            }
+            else if (expenseKind == "tax_total")
+            {
+                var debtTax = debts.Sum(x => DebtTaxByStatus(x, expenseStatus));
+                var incomeTax = incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus));
+
+                expenseByType = new List<object>();
+                if (debtTax > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTax });
+                if (incomeTax > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTax });
+            }
+            else
+            {
+                expenseByType = debts
+                    .GroupBy(x => x.Type)
+                    .Select(g => new
+                    {
+                        type = g.Key,
+                        total = g.Sum(x => DebtNormalByStatus(x, expenseStatus))
+                    })
+                    .Where(x => x.total > 0)
+                    .OrderByDescending(x => x.total)
+                    .Cast<object>()
+                    .ToList();
+
+                var debtTax = debts.Sum(x => DebtTaxByStatus(x, expenseStatus));
+                var incomeTax = incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus));
+
+                if (debtTax > 0) expenseByType.Add(new { type = "Gider Vergisi", total = debtTax });
+                if (incomeTax > 0) expenseByType.Add(new { type = "Gelir Vergisi", total = incomeTax });
+            }
 
             var incomeMonthly = months.Select(m =>
             {
-                var key = $"{m.Year:D4}-{m.Month:D2}";
-                return (object)new { month = key, total = incomeMonthlyDict.TryGetValue(key, out var v) ? v : 0m };
+                var monthRows = incomes.Where(x => MonthStart(x.DueDate) == m).ToList();
+
+                return (object)new
+                {
+                    month = $"{m.Year:D4}-{m.Month:D2}",
+                    total = monthRows.Sum(x => IncomeTotalByStatus(x, incomeStatus))
+                };
             }).ToList();
 
-            var incomeByType = await incomeQ
-                .GroupBy(x => x.IncomeType.Name)
-                .Select(g => new { type = g.Key, total = g.Sum(x => x.Amount) })
+            var incomeByType = incomes
+                .GroupBy(x => x.Type)
+                .Select(g => new
+                {
+                    type = g.Key,
+                    total = g.Sum(x => IncomeTotalByStatus(x, incomeStatus))
+                })
+                .Where(x => x.total > 0)
                 .OrderByDescending(x => x.total)
                 .Cast<object>()
-                .ToListAsync();
+                .ToList();
 
             if (mode == "income")
+            {
                 return Json(new { ok = true, mode, monthly = incomeMonthly, byType = incomeByType });
+            }
 
             if (mode == "compare")
-                return Json(new { ok = true, mode, expense = new { monthly = expenseMonthly, byType = expenseByType }, income = new { monthly = incomeMonthly, byType = incomeByType } });
+            {
+                return Json(new
+                {
+                    ok = true,
+                    mode,
+                    expense = new { monthly = expenseMonthly, byType = expenseByType },
+                    income = new { monthly = incomeMonthly, byType = incomeByType }
+                });
+            }
 
             return Json(new { ok = true, mode = "expense", monthly = expenseMonthly, byType = expenseByType });
         }
-
         // =========================================================
         // NEW: CompareBar (2 sütun - kullanıcı istediği A/B'yi karşılaştırır)
         // =========================================================
         [HttpGet]
-        [HttpGet]
         public async Task<IActionResult> CompareBar(
-    [FromQuery] DateTime? aFrom,
-    [FromQuery] DateTime? aTo,
-    [FromQuery] string aMetric = "income_total",
-    [FromQuery] int? aDebtTypeId = null,
-    [FromQuery] int? aIncomeTypeId = null,
-    [FromQuery] string aExpenseStatus = "total",
-    [FromQuery] string aIncomeStatus = "total",
+       [FromQuery] DateTime? aFrom,
+       [FromQuery] DateTime? aTo,
+       [FromQuery] string aMetric = "income_total",
+       [FromQuery] int? aDebtTypeId = null,
+       [FromQuery] int? aIncomeTypeId = null,
+       [FromQuery] string aExpenseStatus = "total",
+       [FromQuery] string aIncomeStatus = "total",
 
-    [FromQuery] DateTime? bFrom = null,
-    [FromQuery] DateTime? bTo = null,
-    [FromQuery] string bMetric = "expense_total",
-    [FromQuery] int? bDebtTypeId = null,
-    [FromQuery] int? bIncomeTypeId = null,
-    [FromQuery] string bExpenseStatus = "total",
-    [FromQuery] string bIncomeStatus = "total"
-)
+       [FromQuery] DateTime? bFrom = null,
+       [FromQuery] DateTime? bTo = null,
+       [FromQuery] string bMetric = "expense_total",
+       [FromQuery] int? bDebtTypeId = null,
+       [FromQuery] int? bIncomeTypeId = null,
+       [FromQuery] string bExpenseStatus = "total",
+       [FromQuery] string bIncomeStatus = "total"
+   )
         {
             aMetric = (aMetric ?? "income_total").ToLowerInvariant();
             bMetric = (bMetric ?? "expense_total").ToLowerInvariant();
@@ -310,51 +288,145 @@ namespace IdeioMuhasebe.Controllers
         {
             var (f, toEx) = Range(from, to);
 
-            IQueryable<Debt> DebtBase()
-            {
-                var q = _db.Debts.AsNoTracking().Where(x => x.DueDate >= f && x.DueDate < toEx);
+            var debtQ = _db.Debts.AsNoTracking()
+                .Include(x => x.DebtType)
+                .Where(x => x.DueDate >= f && x.DueDate < toEx);
 
-                if (debtTypeId.HasValue && debtTypeId.Value > 0)
-                    q = q.Where(x => x.DebtTypeId == debtTypeId.Value);
+            if (debtTypeId.HasValue && debtTypeId.Value > 0)
+                debtQ = debtQ.Where(x => x.DebtTypeId == debtTypeId.Value);
 
-                if (expenseStatus == "paid") q = q.Where(x => x.IsPaid);
-                else if (expenseStatus == "unpaid") q = q.Where(x => !x.IsPaid);
+            var incomeQ = _db.Incomes.AsNoTracking()
+                .Include(x => x.IncomeType)
+                .Where(x => x.DueDate >= f && x.DueDate < toEx);
 
-                return q;
-            }
+            if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
+                incomeQ = incomeQ.Where(x => x.IncomeTypeId == incomeTypeId.Value);
 
-            IQueryable<Income> IncomeBase()
-            {
-                var q = _db.Incomes.AsNoTracking().Where(x => x.DueDate >= f && x.DueDate < toEx);
+            var debts = await debtQ
+                .Select(x => new DebtStatRow
+                {
+                    DueDate = x.DueDate,
+                    Type = x.DebtType.Name,
+                    Amount = x.Amount,
+                    NetAmount = x.NetAmount,
+                    TaxAmount = x.TaxAmount,
+                    PaidAmount = x.PaidAmount ?? 0
+                })
+                .ToListAsync();
 
-                if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
-                    q = q.Where(x => x.IncomeTypeId == incomeTypeId.Value);
-
-                if (incomeStatus == "paid") q = q.Where(x => x.IsReceived);
-                else if (incomeStatus == "unpaid") q = q.Where(x => !x.IsReceived);
-
-                return q;
-            }
-
-            Task<decimal> DebtNet() => DebtBase().SumAsync(x => (x.NetAmount == 0m && x.TaxAmount == 0m) ? x.Amount : x.NetAmount);
-            Task<decimal> DebtTax() => DebtBase().SumAsync(x => x.TaxAmount);
-
-            Task<decimal> IncomeTotal() => IncomeBase().SumAsync(x => x.Amount);
-            Task<decimal> IncomeTax() => IncomeBase().SumAsync(x => x.TaxAmount);
+            var incomes = await incomeQ
+                .Select(x => new IncomeStatRow
+                {
+                    DueDate = x.DueDate,
+                    Type = x.IncomeType.Name,
+                    Amount = x.Amount,
+                    TaxAmount = x.TaxAmount,
+                    ReceivedAmount = x.ReceivedAmount
+                })
+                .ToListAsync();
 
             return metric switch
             {
-                "income_total" => await IncomeTotal(),
+                "income_total" => incomes.Sum(x => IncomeTotalByStatus(x, incomeStatus)),
+                "expense_normal" => debts.Sum(x => DebtNormalByStatus(x, expenseStatus)),
+                "tax_debt" => debts.Sum(x => DebtTaxByStatus(x, expenseStatus)),
+                "tax_income" => incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
+                "tax_total" => debts.Sum(x => DebtTaxByStatus(x, expenseStatus)) + incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
+                "expense_total" =>
+                    debts.Sum(x => DebtNormalByStatus(x, expenseStatus)) +
+                    debts.Sum(x => DebtTaxByStatus(x, expenseStatus)) +
+                    incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
+                _ => incomes.Sum(x => IncomeTotalByStatus(x, incomeStatus))
+            };
+        }
+        private class DebtStatRow
+        {
+            public DateTime DueDate { get; set; }
+            public string Type { get; set; }
+            public decimal Amount { get; set; }
+            public decimal NetAmount { get; set; }
+            public decimal TaxAmount { get; set; }
+            public decimal PaidAmount { get; set; }
+        }
 
-                "expense_normal" => await DebtNet(),
+        private class IncomeStatRow
+        {
+            public DateTime DueDate { get; set; }
+            public string Type { get; set; }
+            public decimal Amount { get; set; }
+            public decimal TaxAmount { get; set; }
+            public decimal ReceivedAmount { get; set; }
+        }
 
-                "tax_debt" => await DebtTax(),
-                "tax_income" => await IncomeTax(),
-                "tax_total" => (await DebtTax()) + (await IncomeTax()),
+        private static decimal Clamp(decimal value, decimal max)
+        {
+            if (value < 0) return 0m;
+            if (value > max) return max;
+            return value;
+        }
 
-                "expense_total" => (await DebtNet()) + (await DebtTax()) + (await IncomeTax()),
+        private static decimal DebtNormalTotal(DebtStatRow x)
+        {
+            return (x.NetAmount == 0m && x.TaxAmount == 0m) ? x.Amount : x.NetAmount;
+        }
 
-                _ => await IncomeTotal()
+        private static decimal DebtPaidRatio(DebtStatRow x)
+        {
+            if (x.Amount <= 0) return 0m;
+            return Clamp(x.PaidAmount, x.Amount) / x.Amount;
+        }
+
+        private static decimal DebtNormalByStatus(DebtStatRow x, string status)
+        {
+            var total = DebtNormalTotal(x);
+            var paid = total * DebtPaidRatio(x);
+
+            return status switch
+            {
+                "paid" => paid,
+                "unpaid" => total - paid,
+                _ => total
+            };
+        }
+
+        private static decimal DebtTaxByStatus(DebtStatRow x, string status)
+        {
+            var total = x.TaxAmount;
+            var paid = total * DebtPaidRatio(x);
+
+            return status switch
+            {
+                "paid" => paid,
+                "unpaid" => total - paid,
+                _ => total
+            };
+        }
+
+        private static decimal IncomeTotalByStatus(IncomeStatRow x, string status)
+        {
+            var paid = Clamp(x.ReceivedAmount, x.Amount);
+
+            return status switch
+            {
+                "paid" => paid,
+                "unpaid" => x.Amount - paid,
+                _ => x.Amount
+            };
+        }
+
+        private static decimal IncomeTaxByStatus(IncomeStatRow x, string status)
+        {
+            if (x.Amount <= 0)
+                return status == "total" ? x.TaxAmount : 0m;
+
+            var paidRatio = Clamp(x.ReceivedAmount, x.Amount) / x.Amount;
+            var paidTax = x.TaxAmount * paidRatio;
+
+            return status switch
+            {
+                "paid" => paidTax,
+                "unpaid" => x.TaxAmount - paidTax,
+                _ => x.TaxAmount
             };
         }
     }

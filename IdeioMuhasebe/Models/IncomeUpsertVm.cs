@@ -10,7 +10,7 @@ namespace IdeioMuhasebe.Models
 
         public decimal NetAmount { get; set; }
         public decimal TaxAmount { get; set; }
-
+        public decimal Amount { get; set; }
         public DateTime DueDate { get; set; }
         public string? Payer { get; set; }
         public bool IsReceived { get; set; }

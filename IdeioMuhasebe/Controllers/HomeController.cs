@@ -31,6 +31,8 @@ namespace IdeioMuhasebe.Controllers
         {
             var (f, toEx) = Range(from, to);
 
+            decimal Clamp(decimal v, decimal max) => v < 0 ? 0m : (v > max ? max : v);
+
             // ---------------------------------------------------------
             // EXPENSES (Debts)
             // ---------------------------------------------------------
@@ -42,29 +44,93 @@ namespace IdeioMuhasebe.Controllers
             if (debtTypeId.HasValue && debtTypeId.Value > 0)
                 qExp = qExp.Where(x => x.DebtTypeId == debtTypeId.Value);
 
-            var debtTotal = await qExp.SumAsync(x => (decimal?)x.Amount) ?? 0m;
-            var debtPaid = await qExp.Where(x => x.IsPaid).SumAsync(x => (decimal?)x.Amount) ?? 0m;
-            var debtUnpaid = debtTotal - debtPaid;
-
-            var expRaw = await qExp
-                .Where(x => !x.IsPaid)
-                .OrderBy(x => x.DueDate)
+            var expRawAll = await qExp
                 .Select(x => new
                 {
                     x.Id,
                     x.Name,
                     x.Amount,
+                    x.PaidAmount,
                     x.DueDate,
                     debtType = x.DebtType.Name,
                     debtTypeId = x.DebtTypeId,
                     x.IsPaid,
-
                     recurringDebtId = x.RecurringDebtId,
                     recurringStartDate = x.RecurringDebt != null ? (DateTime?)x.RecurringDebt.StartDate : null,
                     recurringPeriodCount = x.RecurringDebt != null ? x.RecurringDebt.PeriodCount : null
                 })
-                .Take(50)
                 .ToListAsync();
+
+            var debtTotal = expRawAll.Sum(x => x.Amount);
+            var debtPaid = expRawAll.Sum(x => Clamp(x.PaidAmount ?? 0, x.Amount));
+
+            var debtUnpaid = expRawAll.Sum(x => (x.Amount) - Clamp(x.PaidAmount ?? 0, x.Amount));
+
+            var expRaw = expRawAll
+                .Where(x => !x.IsPaid)
+                .OrderBy(x => x.DueDate)
+                .Take(50)
+                .ToList();
+
+            // ---------------------------------------------------------
+            // INCOMES
+            // ---------------------------------------------------------
+            var qInc = _db.Incomes.AsNoTracking()
+                .Include(x => x.IncomeType)
+                .Include(x => x.RecurringIncome)
+                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+
+            if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
+                qInc = qInc.Where(x => x.IncomeTypeId == incomeTypeId.Value);
+
+            var incRawAll = await qInc
+                .Select(x => new
+                {
+                    x.Id,
+                    x.Name,
+                    x.Amount,
+                    x.TaxAmount,
+                    x.ReceivedAmount,
+                    x.DueDate,
+                    incomeType = x.IncomeType.Name,
+                    incomeTypeId = x.IncomeTypeId,
+                    x.IsReceived,
+                    recurringIncomeId = x.RecurringIncomeId,
+                    recurringStartDate = x.RecurringIncome != null ? (DateTime?)x.RecurringIncome.StartDate : null,
+                    recurringPeriodCount = x.RecurringIncome != null ? x.RecurringIncome.PeriodCount : null
+                })
+                .ToListAsync();
+
+            var incTotal = incRawAll.Sum(x => x.Amount);
+            var incReceived = incRawAll.Sum(x => Clamp(x.ReceivedAmount, x.Amount));
+            var incRemaining = incRawAll.Sum(x => x.Amount - Clamp(x.ReceivedAmount, x.Amount));
+
+            // Gelir vergisi gider sayılacak ama kısmi tahsilata göre oranlanacak
+            decimal IncomeTaxReceived(dynamic x)
+            {
+                var received = Clamp((decimal)x.ReceivedAmount, (decimal)x.Amount);
+                if (x.Amount <= 0) return 0m;
+                return x.TaxAmount * (received / x.Amount);
+            }
+
+            decimal IncomeTaxRemaining(dynamic x) => x.TaxAmount - IncomeTaxReceived(x);
+
+            var incTaxTotal = incRawAll.Sum(x => x.TaxAmount);
+            var incTaxReceived = incRawAll.Sum(x => IncomeTaxReceived(x));
+            var incTaxRemaining = incRawAll.Sum(x => IncomeTaxRemaining(x));
+
+            var incRaw = incRawAll
+                .Where(x => !x.IsReceived)
+                .OrderBy(x => x.DueDate)
+                .Take(50)
+                .ToList();
+
+            // ---------------------------------------------------------
+            // recurring period text
+            // ---------------------------------------------------------
+            static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
+            static int MonthDiff(DateTime aMonth, DateTime bMonth)
+                => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
 
             var upcomingExpenses = expRaw.Select(x =>
             {
@@ -85,11 +151,17 @@ namespace IdeioMuhasebe.Controllers
                     periodText = $"{idx}/{x.recurringPeriodCount.Value}";
                 }
 
+                var paid = Clamp(x.PaidAmount ?? 0, x.Amount);
+                var remaining = x.Amount - paid;
+
                 return new
                 {
                     x.Id,
                     x.Name,
-                    x.Amount,
+                    amount = remaining,
+                    totalAmount = x.Amount,
+                    paidAmount = paid,
+                    remainingAmount = remaining,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     x.debtType,
                     x.debtTypeId,
@@ -97,46 +169,6 @@ namespace IdeioMuhasebe.Controllers
                     recurringPeriodText = periodText
                 };
             }).ToList();
-
-            // ---------------------------------------------------------
-            // INCOMES
-            // ---------------------------------------------------------
-            var qInc = _db.Incomes.AsNoTracking()
-                .Include(x => x.IncomeType)
-                .Include(x => x.RecurringIncome)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
-
-            if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
-                qInc = qInc.Where(x => x.IncomeTypeId == incomeTypeId.Value);
-
-            var incTotal = await qInc.SumAsync(x => (decimal?)x.Amount) ?? 0m;
-            var incReceived = await qInc.Where(x => x.IsReceived).SumAsync(x => (decimal?)x.Amount) ?? 0m;
-            var incRemaining = incTotal - incReceived;
-
-            // Gelir vergisi gider sayılacak
-            var incTaxTotal = await qInc.SumAsync(x => (decimal?)x.TaxAmount) ?? 0m;
-            var incTaxReceived = await qInc.Where(x => x.IsReceived).SumAsync(x => (decimal?)x.TaxAmount) ?? 0m;
-            var incTaxRemaining = incTaxTotal - incTaxReceived;
-
-            var incRaw = await qInc
-                .Where(x => !x.IsReceived)
-                .OrderBy(x => x.DueDate)
-                .Select(x => new
-                {
-                    x.Id,
-                    x.Name,
-                    x.Amount,
-                    x.DueDate,
-                    incomeType = x.IncomeType.Name,
-                    incomeTypeId = x.IncomeTypeId,
-                    x.IsReceived,
-
-                    recurringIncomeId = x.RecurringIncomeId,
-                    recurringStartDate = x.RecurringIncome != null ? (DateTime?)x.RecurringIncome.StartDate : null,
-                    recurringPeriodCount = x.RecurringIncome != null ? x.RecurringIncome.PeriodCount : null
-                })
-                .Take(50)
-                .ToListAsync();
 
             var upcomingIncomes = incRaw.Select(x =>
             {
@@ -157,11 +189,17 @@ namespace IdeioMuhasebe.Controllers
                     periodText = $"{idx}/{x.recurringPeriodCount.Value}";
                 }
 
+                var received = Clamp(x.ReceivedAmount, x.Amount);
+                var remaining = x.Amount - received;
+
                 return new
                 {
                     x.Id,
                     x.Name,
-                    x.Amount,
+                    amount = remaining,
+                    totalAmount = x.Amount,
+                    receivedAmount = received,
+                    remainingAmount = remaining,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     x.incomeType,
                     x.incomeTypeId,
@@ -172,7 +210,8 @@ namespace IdeioMuhasebe.Controllers
 
             // ---------------------------------------------------------
             // HOME KARTLARI
-            // Gider = Borç toplamı + Gelir vergisi
+            // gider = borç toplamı + gelir vergisi
+            // ama paid/remaining kısmi mantıkla
             // ---------------------------------------------------------
             var expTotal = debtTotal + incTaxTotal;
             var expPaid = debtPaid + incTaxReceived;

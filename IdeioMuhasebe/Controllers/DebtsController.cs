@@ -144,7 +144,6 @@ namespace IdeioMuhasebe.Controllers
             var name = vm.Name.Trim();
             var payee = string.IsNullOrWhiteSpace(vm.Payee) ? null : vm.Payee.Trim();
 
-            // ✅ Net+Vergi -> Toplam (geriye dönük uyum: net+tax 0 ise Amount kullan)
             decimal net = vm.NetAmount;
             decimal tax = vm.TaxAmount;
 
@@ -162,9 +161,7 @@ namespace IdeioMuhasebe.Controllers
 
             int? periodCount = (vm.PeriodCount.HasValue && vm.PeriodCount.Value > 0) ? vm.PeriodCount.Value : (int?)null;
 
-            // -------------------------
             // CREATE
-            // -------------------------
             if (vm.Id == 0)
             {
                 int? recurringId = null;
@@ -187,11 +184,9 @@ namespace IdeioMuhasebe.Controllers
                         {
                             DebtTypeId = vm.DebtTypeId,
                             Name = name,
-
                             NetAmount = net,
                             TaxAmount = tax,
                             Amount = total,
-
                             Payee = payee,
                             DayOfMonth = day,
                             StartDate = vm.DueDate.Date,
@@ -200,7 +195,7 @@ namespace IdeioMuhasebe.Controllers
                             UpdatedDate = DateTime.Now
                         };
                         _db.RecurringDebts.Add(rule);
-                        await _db.SaveChangesAsync(); // rule.Id
+                        await _db.SaveChangesAsync();
                     }
                     else
                     {
@@ -208,8 +203,7 @@ namespace IdeioMuhasebe.Controllers
 
                         rule.NetAmount = net;
                         rule.TaxAmount = tax;
-                        rule.Amount = net + tax;
-
+                        rule.Amount = total;
                         rule.Payee = payee;
                         rule.DayOfMonth = day;
                         rule.PeriodCount = periodCount;
@@ -226,16 +220,17 @@ namespace IdeioMuhasebe.Controllers
                 {
                     DebtTypeId = vm.DebtTypeId,
                     Name = name,
-
                     NetAmount = net,
                     TaxAmount = tax,
                     Amount = total,
+
+                    // ✅ ilk oluştururken checkbox işaretliyse tam ödenmiş başlat
+                    PaidAmount = vm.IsPaid ? total : 0m,
 
                     DueDate = vm.DueDate.Date,
                     Payee = payee,
                     IsPaid = vm.IsPaid,
                     UpdatedDate = DateTime.Now,
-
                     RecurringDebtId = recurringId
                 };
 
@@ -248,25 +243,42 @@ namespace IdeioMuhasebe.Controllers
                 return Json(new { ok = true, id = ent.Id });
             }
 
-            // -------------------------
             // UPDATE
-            // -------------------------
             var existing = await _db.Debts.FirstOrDefaultAsync(x => x.Id == vm.Id);
             if (existing == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
+            var oldWasPaid = existing.IsPaid;
+
             existing.DebtTypeId = vm.DebtTypeId;
             existing.Name = name;
-
             existing.NetAmount = net;
             existing.TaxAmount = tax;
             existing.Amount = total;
-
             existing.DueDate = vm.DueDate.Date;
             existing.Payee = payee;
-            existing.IsPaid = vm.IsPaid;
             existing.UpdatedDate = DateTime.Now;
 
-            // ✅ Yinelenen kapandıysa sadece bu kaydı kuraldan kopar
+            // ✅ kısmi ödeme varsa koru
+            if (vm.IsPaid)
+            {
+                existing.PaidAmount = total;
+                existing.IsPaid = true;
+            }
+            else
+            {
+                if (oldWasPaid)
+                {
+                    // formdan "ödendi" kaldırıldıysa ve daha önce fully paid ise sıfırla
+                    existing.PaidAmount = 0m;
+                }
+
+                if (existing.PaidAmount > total)
+                    existing.PaidAmount = total;
+
+                existing.IsPaid = false;
+            }
+
+            // recurring kapandıysa
             if (!vm.IsRecurring)
             {
                 existing.RecurringDebtId = null;
@@ -274,17 +286,14 @@ namespace IdeioMuhasebe.Controllers
                 return Json(new { ok = true });
             }
 
-            // ✅ Yinelenen açık: rule oluştur/güncelle ve bağla
+            // recurring açık: oluştur/güncelle
             {
                 var day = vm.DueDate.Day;
-
                 RecurringDebt rule = null;
 
-                // varsa bağlı rule'u çek
                 if (existing.RecurringDebtId.HasValue)
                     rule = await _db.RecurringDebts.FirstOrDefaultAsync(r => r.Id == existing.RecurringDebtId.Value);
 
-                // yoksa eşleşeni bul / yoksa oluştur
                 if (rule == null)
                 {
                     rule = await _db.RecurringDebts.FirstOrDefaultAsync(r =>
@@ -301,11 +310,9 @@ namespace IdeioMuhasebe.Controllers
                         {
                             DebtTypeId = vm.DebtTypeId,
                             Name = name,
-
                             NetAmount = net,
                             TaxAmount = tax,
                             Amount = total,
-
                             Payee = payee,
                             DayOfMonth = day,
                             StartDate = vm.DueDate.Date,
@@ -319,18 +326,14 @@ namespace IdeioMuhasebe.Controllers
                     }
                 }
 
-                // rule güncelle
                 rule.DebtTypeId = vm.DebtTypeId;
                 rule.Name = name;
-
                 rule.NetAmount = net;
                 rule.TaxAmount = tax;
-                rule.Amount = net + tax;
-
+                rule.Amount = total;
                 rule.Payee = payee;
                 rule.DayOfMonth = day;
                 if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
-
                 rule.PeriodCount = periodCount;
                 rule.IsActive = true;
                 rule.UpdatedDate = DateTime.Now;

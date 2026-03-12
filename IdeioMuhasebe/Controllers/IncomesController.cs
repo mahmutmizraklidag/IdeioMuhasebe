@@ -163,8 +163,16 @@ namespace IdeioMuhasebe.Controllers
 
             decimal net = vm.NetAmount;
             decimal tax = vm.TaxAmount;
+
             if (net < 0) net = 0;
             if (tax < 0) tax = 0;
+
+            if (net + tax <= 0 && vm.Amount > 0)
+            {
+                net = vm.Amount;
+                tax = 0;
+            }
+
             var total = net + tax;
             if (total <= 0) return BadRequest(new { ok = false, message = "Net + Vergi toplamı 0'dan büyük olmalı." });
 
@@ -208,12 +216,16 @@ namespace IdeioMuhasebe.Controllers
                     else
                     {
                         if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
+
                         rule.NetAmount = net;
                         rule.TaxAmount = tax;
-                        rule.Amount = net + tax;
+                        rule.Amount = total;
                         rule.Payer = payer;
+                        rule.DayOfMonth = day;
                         rule.PeriodCount = periodCount;
+                        rule.IsActive = true;
                         rule.UpdatedDate = DateTime.Now;
+
                         await _db.SaveChangesAsync();
                     }
 
@@ -227,6 +239,10 @@ namespace IdeioMuhasebe.Controllers
                     NetAmount = net,
                     TaxAmount = tax,
                     Amount = total,
+
+                    // ✅ ilk oluştururken checkbox işaretliyse tam tahsil edilmiş başlat
+                    ReceivedAmount = vm.IsReceived ? total : 0m,
+
                     DueDate = vm.DueDate.Date,
                     Payer = payer,
                     IsReceived = vm.IsReceived,
@@ -246,6 +262,8 @@ namespace IdeioMuhasebe.Controllers
             var existing = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == vm.Id);
             if (existing == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
+            var oldWasReceived = existing.IsReceived;
+
             existing.IncomeTypeId = vm.IncomeTypeId;
             existing.Name = name;
             existing.NetAmount = net;
@@ -253,8 +271,25 @@ namespace IdeioMuhasebe.Controllers
             existing.Amount = total;
             existing.DueDate = vm.DueDate.Date;
             existing.Payer = payer;
-            existing.IsReceived = vm.IsReceived;
             existing.UpdatedDate = DateTime.Now;
+
+            if (vm.IsReceived)
+            {
+                existing.ReceivedAmount = total;
+                existing.IsReceived = true;
+            }
+            else
+            {
+                if (oldWasReceived)
+                {
+                    existing.ReceivedAmount = 0m;
+                }
+
+                if (existing.ReceivedAmount > total)
+                    existing.ReceivedAmount = total;
+
+                existing.IsReceived = false;
+            }
 
             if (!vm.IsRecurring)
             {
@@ -263,11 +298,10 @@ namespace IdeioMuhasebe.Controllers
                 return Json(new { ok = true });
             }
 
-            // recurring açık: rule oluştur/güncelle
             {
                 var day = vm.DueDate.Day;
-
                 RecurringIncome rule = null;
+
                 if (existing.RecurringIncomeId.HasValue)
                     rule = await _db.RecurringIncomes.FirstOrDefaultAsync(r => r.Id == existing.RecurringIncomeId.Value);
 
@@ -297,6 +331,7 @@ namespace IdeioMuhasebe.Controllers
                             IsActive = true,
                             UpdatedDate = DateTime.Now
                         };
+
                         _db.RecurringIncomes.Add(rule);
                         await _db.SaveChangesAsync();
                     }
@@ -306,7 +341,7 @@ namespace IdeioMuhasebe.Controllers
                 rule.Name = name;
                 rule.NetAmount = net;
                 rule.TaxAmount = tax;
-                rule.Amount = net + tax;
+                rule.Amount = total;
                 rule.Payer = payer;
                 rule.DayOfMonth = day;
                 if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;

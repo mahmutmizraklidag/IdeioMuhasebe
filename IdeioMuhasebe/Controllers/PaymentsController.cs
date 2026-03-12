@@ -79,6 +79,13 @@ namespace IdeioMuhasebe.Controllers
             static int MonthDiff(DateTime aMonth, DateTime bMonth)
                 => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
 
+            static decimal Clamp(decimal value, decimal max)
+            {
+                if (value < 0) return 0m;
+                if (value > max) return max;
+                return value;
+            }
+
             var q = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
                 .Include(x => x.RecurringDebt)
@@ -94,7 +101,8 @@ namespace IdeioMuhasebe.Controllers
                 {
                     id = x.Id,
                     name = x.Name,
-                    amount = x.Amount,
+                    totalAmount = x.Amount,
+                    paidAmount = x.PaidAmount,
                     dueDateDt = x.DueDate,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     debtType = x.DebtType.Name,
@@ -109,6 +117,9 @@ namespace IdeioMuhasebe.Controllers
 
             var list = raw.Select(x =>
             {
+                var paid = Clamp(x.paidAmount ?? 0, x.totalAmount);
+                var remaining = x.totalAmount - paid;
+
                 string? periodText = null;
 
                 if (x.recurringDebtId.HasValue &&
@@ -130,7 +141,10 @@ namespace IdeioMuhasebe.Controllers
                 {
                     x.id,
                     x.name,
-                    x.amount,
+                    amount = remaining,
+                    totalAmount = x.totalAmount,
+                    paidAmount = paid,
+                    remainingAmount = remaining,
                     x.dueDate,
                     x.debtType,
                     x.debtTypeId,
@@ -149,16 +163,90 @@ namespace IdeioMuhasebe.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SetPaid([FromBody] SetPaidVm vm)
+        public async Task<IActionResult> SetPaid([FromBody] IdeioMuhasebe.Models.SetPaidVm vm)
         {
-            var ent = await _db.Debts.FirstOrDefaultAsync(x => x.Id == vm.Id);
-            if (ent == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+            if (vm == null || vm.Id <= 0)
+                return BadRequest(new { ok = false, message = "Geçersiz istek." });
 
-            ent.IsPaid = vm.IsPaid;
+            var ent = await _db.Debts.FirstOrDefaultAsync(x => x.Id == vm.Id);
+            if (ent == null)
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+
+            if (vm.IsPaid)
+            {
+                ent.IsPaid = true;
+                ent.PaidAmount = ent.Amount;
+            }
+            else
+            {
+                ent.IsPaid = false;
+
+                // sadece fully-paid kolondan geri çekildiyse sıfırla
+                if (ent.PaidAmount >= ent.Amount)
+                    ent.PaidAmount = 0m;
+            }
+
             ent.UpdatedDate = DateTime.Now;
             await _db.SaveChangesAsync();
 
             return Json(new { ok = true });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> AddPartialPayment([FromBody] IdeioMuhasebe.Models.PartialAmountVM vm)
+        {
+            if (vm == null || vm.Id <= 0)
+                return BadRequest(new { ok = false, message = "Geçersiz istek." });
+
+            if (vm.Amount <= 0)
+                return BadRequest(new { ok = false, message = "Tutar 0'dan büyük olmalı." });
+
+            var ent = await _db.Debts.FirstOrDefaultAsync(x => x.Id == vm.Id);
+            if (ent == null)
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+
+            if (ent.IsPaid)
+                return BadRequest(new { ok = false, message = "Bu kayıt zaten ödendi." });
+
+            var currentPaid = ent.PaidAmount < 0 ? 0m : ent.PaidAmount;
+            if (currentPaid > ent.Amount) currentPaid = ent.Amount;
+
+            var remaining = ent.Amount - currentPaid;
+
+            // ✅ artık clamp yok, fazla girilirse reddet
+            if (vm.Amount > remaining)
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    message = $"Gider tutarından daha büyük bir ödeme girdiniz. Kalan tutar: {remaining:N2} ₺"
+                });
+            }
+
+            ent.PaidAmount = currentPaid + vm.Amount;
+
+            // ✅ toplam tamamlandıysa otomatik ödendi yap
+            if (ent.PaidAmount >= ent.Amount)
+            {
+                ent.PaidAmount = ent.Amount;
+                ent.IsPaid = true;
+            }
+            else
+            {
+                ent.IsPaid = false;
+            }
+
+            ent.UpdatedDate = DateTime.Now;
+            await _db.SaveChangesAsync();
+
+            return Json(new
+            {
+                ok = true,
+                paidAmount = ent.PaidAmount,
+                remainingAmount = ent.Amount - ent.PaidAmount,
+                fullyCovered = ent.IsPaid
+            });
         }
 
         public class SetPaidVm

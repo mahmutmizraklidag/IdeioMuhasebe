@@ -85,7 +85,8 @@ namespace IdeioMuhasebe.Services
                         Payer = r.Payer,
                         IsReceived = false,
                         UpdatedDate = DateTime.Now,
-                        RecurringIncomeId = r.Id
+                        RecurringIncomeId = r.Id,
+                        ReceivedAmount=0m
                     });
                 }
             }

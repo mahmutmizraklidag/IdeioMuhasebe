@@ -25,7 +25,9 @@ namespace IdeioMuhasebe.Entities
         [Column(TypeName = "decimal(18,2)")]
         [Display(Name = "Vergi Miktarı (₺)")]
         public decimal TaxAmount { get; set; }
-
+        // ✅ YENİ: Vergi
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ReceivedAmount { get; set; }
         [Required]
         [DataType(DataType.Date)]
         [Display(Name = "Tahsil Tarihi")]
