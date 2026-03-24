@@ -19,6 +19,14 @@
     const cSelDiff = document.getElementById("cSelDiff");
     const selectedCardsRow = document.getElementById("selectedCardsRow");
 
+    const cExpTotal = document.getElementById("cExpTotal");
+    const cExpPaid = document.getElementById("cExpPaid");
+    const cExpRemaining = document.getElementById("cExpRemaining");
+
+    const cIncTotal = document.getElementById("cIncTotal");
+    const cIncReceived = document.getElementById("cIncReceived");
+    const cIncRemaining = document.getElementById("cIncRemaining");
+
     const expCatToggle = document.getElementById("expCatToggle");
     const incCatToggle = document.getElementById("incCatToggle");
 
@@ -44,6 +52,9 @@
 
     let selectedExpenseCategoryIds = new Set();
     let selectedIncomeCategoryIds = new Set();
+
+    let baseExpenseRemaining = 0;
+    let baseIncomeRemaining = 0;
 
     expCatPanel.addEventListener("click", (e) => e.stopPropagation());
     incCatPanel.addEventListener("click", (e) => e.stopPropagation());
@@ -201,8 +212,32 @@
         incCatSelectAll.indeterminate = selected > 0 && selected < total;
     };
 
+    const getFilteredExpenses = () => {
+        return allUpcomingExpenses.filter(x => selectedExpenseCategoryIds.has(x.debtTypeId));
+    };
+
+    const getFilteredIncomes = () => {
+        return allUpcomingIncomes.filter(x => selectedIncomeCategoryIds.has(x.incomeTypeId));
+    };
+
+    const updateRemainingCardsByCategoryFilter = () => {
+        const allExpenseSelected = selectedExpenseCategoryIds.size === expenseCategories.length;
+        const allIncomeSelected = selectedIncomeCategoryIds.size === incomeCategories.length;
+
+        const expenseRemaining = allExpenseSelected
+   ? baseExpenseRemaining
+   : getFilteredExpenses().reduce((sum, x) => sum + Number(x.remainingAmount || 0), 0);
+
+        const incomeRemaining = allIncomeSelected
+   ? baseIncomeRemaining
+   : getFilteredIncomes().reduce((sum, x) => sum + Number(x.remainingAmount || 0), 0);
+
+        cExpRemaining.textContent = app.money(expenseRemaining);
+        cIncRemaining.textContent = app.money(incomeRemaining);
+    };
+
     const renderExpenses = () => {
-        const filtered = allUpcomingExpenses.filter(x => selectedExpenseCategoryIds.has(x.debtTypeId));
+        const filtered = getFilteredExpenses();
 
         expBody.innerHTML = "";
         expCount.textContent = filtered.length;
@@ -215,15 +250,16 @@
       `;
             resetSelectCards();
             syncSelectAllState();
+            updateRemainingCardsByCategoryFilter();
             return;
         }
 
         filtered.forEach(x => {
-            const periodBadge = x.recurringPeriodText
-                ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
-                : "";
+       const periodBadge = x.recurringPeriodText
+           ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+           : "";
 
-            expBody.insertAdjacentHTML("beforeend", `
+       expBody.insertAdjacentHTML("beforeend", `
         <tr>
           <td>
             <input
@@ -242,14 +278,15 @@
           <td class="text-end">${app.dueBadgeHtml(x.dueDate, false)}</td>
         </tr>
       `);
-        });
+   });
 
         resetSelectCards();
         syncSelectAllState();
+        updateRemainingCardsByCategoryFilter();
     };
 
     const renderIncomes = () => {
-        const filtered = allUpcomingIncomes.filter(x => selectedIncomeCategoryIds.has(x.incomeTypeId));
+        const filtered = getFilteredIncomes();
 
         incBody.innerHTML = "";
         incCount.textContent = filtered.length;
@@ -262,15 +299,16 @@
       `;
             resetSelectCards();
             syncSelectAllState();
+            updateRemainingCardsByCategoryFilter();
             return;
         }
 
         filtered.forEach(x => {
-            const periodBadge = x.recurringPeriodText
-                ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
-                : "";
+       const periodBadge = x.recurringPeriodText
+           ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+           : "";
 
-            incBody.insertAdjacentHTML("beforeend", `
+       incBody.insertAdjacentHTML("beforeend", `
         <tr>
           <td>
             <input
@@ -289,10 +327,11 @@
           <td class="text-end">${app.dueBadgeHtml(x.dueDate, false)}</td>
         </tr>
       `);
-        });
+   });
 
         resetSelectCards();
         syncSelectAllState();
+        updateRemainingCardsByCategoryFilter();
     };
 
     const closeCategoryPanels = () => {
@@ -302,19 +341,22 @@
 
     const load = async () => {
         const data = await app.get("/Home/Summary", {
-            from: from.value,
-            to: to.value,
-            debtTypeId: debtTypeFilter.value,
-            incomeTypeId: incomeTypeFilter.value
-        });
+       from: from.value,
+       to: to.value,
+       debtTypeId: debtTypeFilter.value,
+       incomeTypeId: incomeTypeFilter.value
+   });
 
-        document.getElementById("cExpTotal").textContent = app.money(data.cards.expenseTotal);
-        document.getElementById("cExpPaid").textContent = app.money(data.cards.expensePaid);
-        document.getElementById("cExpRemaining").textContent = app.money(data.cards.expenseRemaining);
+        cExpTotal.textContent = app.money(data.cards.expenseTotal);
+        cExpPaid.textContent = app.money(data.cards.expensePaid);
+        cExpRemaining.textContent = app.money(data.cards.expenseRemaining);
 
-        document.getElementById("cIncTotal").textContent = app.money(data.cards.incomeTotal);
-        document.getElementById("cIncReceived").textContent = app.money(data.cards.incomeReceived);
-        document.getElementById("cIncRemaining").textContent = app.money(data.cards.incomeRemaining);
+        cIncTotal.textContent = app.money(data.cards.incomeTotal);
+        cIncReceived.textContent = app.money(data.cards.incomeReceived);
+        cIncRemaining.textContent = app.money(data.cards.incomeRemaining);
+
+        baseExpenseRemaining = Number(data.cards.expenseRemaining || 0);
+        baseIncomeRemaining = Number(data.cards.incomeRemaining || 0);
 
         allUpcomingExpenses = data.upcomingExpenses || [];
         allUpcomingIncomes = data.upcomingIncomes || [];
@@ -329,125 +371,125 @@
     };
 
     expBody.addEventListener("change", (e) => {
-        if (!e.target.classList.contains("exp-check")) return;
-        syncSelectAllState();
-        updateSelectCards();
-    });
+       if (!e.target.classList.contains("exp-check")) return;
+       syncSelectAllState();
+       updateSelectCards();
+   });
 
     incBody.addEventListener("change", (e) => {
-        if (!e.target.classList.contains("inc-check")) return;
-        syncSelectAllState();
-        updateSelectCards();
-    });
+       if (!e.target.classList.contains("inc-check")) return;
+       syncSelectAllState();
+       updateSelectCards();
+   });
 
     expSelectAll.addEventListener("change", () => {
-        document.querySelectorAll(".exp-check").forEach(x => {
-            x.checked = expSelectAll.checked;
-        });
-        syncSelectAllState();
-        updateSelectCards();
-    });
+       document.querySelectorAll(".exp-check").forEach(x => {
+           x.checked = expSelectAll.checked;
+       });
+       syncSelectAllState();
+       updateSelectCards();
+   });
 
     incSelectAll.addEventListener("change", () => {
-        document.querySelectorAll(".inc-check").forEach(x => {
-            x.checked = incSelectAll.checked;
-        });
-        syncSelectAllState();
-        updateSelectCards();
-    });
+       document.querySelectorAll(".inc-check").forEach(x => {
+           x.checked = incSelectAll.checked;
+       });
+       syncSelectAllState();
+       updateSelectCards();
+   });
 
     expCatToggle.addEventListener("click", () => {
-        incCatPanel.classList.add("d-none");
+       incCatPanel.classList.add("d-none");
 
-        const willOpen = expCatPanel.classList.contains("d-none");
-        expCatPanel.classList.toggle("d-none");
+       const willOpen = expCatPanel.classList.contains("d-none");
+       expCatPanel.classList.toggle("d-none");
 
-        if (willOpen) {
-            positionPanelUnderButton(expCatPanel, expCatToggle);
-        }
-    });
+       if (willOpen) {
+           positionPanelUnderButton(expCatPanel, expCatToggle);
+       }
+   });
 
     incCatToggle.addEventListener("click", () => {
-        expCatPanel.classList.add("d-none");
+       expCatPanel.classList.add("d-none");
 
-        const willOpen = incCatPanel.classList.contains("d-none");
-        incCatPanel.classList.toggle("d-none");
+       const willOpen = incCatPanel.classList.contains("d-none");
+       incCatPanel.classList.toggle("d-none");
 
-        if (willOpen) {
-            positionPanelUnderButton(incCatPanel, incCatToggle);
-        }
-    });
+       if (willOpen) {
+           positionPanelUnderButton(incCatPanel, incCatToggle);
+       }
+   });
 
     document.addEventListener("click", (e) => {
-        const expInside = expCatPanel.contains(e.target) || expCatToggle.contains(e.target);
-        const incInside = incCatPanel.contains(e.target) || incCatToggle.contains(e.target);
+       const expInside = expCatPanel.contains(e.target) || expCatToggle.contains(e.target);
+       const incInside = incCatPanel.contains(e.target) || incCatToggle.contains(e.target);
 
-        if (!expInside) expCatPanel.classList.add("d-none");
-        if (!incInside) incCatPanel.classList.add("d-none");
-    });
+       if (!expInside) expCatPanel.classList.add("d-none");
+       if (!incInside) incCatPanel.classList.add("d-none");
+   });
 
     document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeCategoryPanels();
-    });
+       if (e.key === "Escape") closeCategoryPanels();
+   });
 
     window.addEventListener("resize", repositionOpenPanels);
     window.addEventListener("scroll", repositionOpenPanels, true);
 
     expCatPanel.addEventListener("change", (e) => {
-        if (e.target.id === "expCatSelectAll") {
-            if (e.target.checked) {
-                selectedExpenseCategoryIds = new Set(expenseCategories.map(x => x.id));
-            } else {
-                selectedExpenseCategoryIds = new Set();
-            }
-            renderExpenseCategoryPanel();
-            renderExpenses();
-            return;
-        }
+       if (e.target.id === "expCatSelectAll") {
+           if (e.target.checked) {
+               selectedExpenseCategoryIds = new Set(expenseCategories.map(x => x.id));
+           } else {
+               selectedExpenseCategoryIds = new Set();
+           }
+           renderExpenseCategoryPanel();
+           renderExpenses();
+           return;
+       }
 
-        if (e.target.classList.contains("exp-cat-check")) {
-            const id = Number(e.target.value);
-            if (e.target.checked) selectedExpenseCategoryIds.add(id);
-            else selectedExpenseCategoryIds.delete(id);
+       if (e.target.classList.contains("exp-cat-check")) {
+           const id = Number(e.target.value);
+           if (e.target.checked) selectedExpenseCategoryIds.add(id);
+           else selectedExpenseCategoryIds.delete(id);
 
-            renderExpenseCategoryPanel();
-            renderExpenses();
-        }
-    });
+           renderExpenseCategoryPanel();
+           renderExpenses();
+       }
+   });
 
     incCatPanel.addEventListener("change", (e) => {
-        if (e.target.id === "incCatSelectAll") {
-            if (e.target.checked) {
-                selectedIncomeCategoryIds = new Set(incomeCategories.map(x => x.id));
-            } else {
-                selectedIncomeCategoryIds = new Set();
-            }
-            renderIncomeCategoryPanel();
-            renderIncomes();
-            return;
-        }
+       if (e.target.id === "incCatSelectAll") {
+           if (e.target.checked) {
+               selectedIncomeCategoryIds = new Set(incomeCategories.map(x => x.id));
+           } else {
+               selectedIncomeCategoryIds = new Set();
+           }
+           renderIncomeCategoryPanel();
+           renderIncomes();
+           return;
+       }
 
-        if (e.target.classList.contains("inc-cat-check")) {
-            const id = Number(e.target.value);
-            if (e.target.checked) selectedIncomeCategoryIds.add(id);
-            else selectedIncomeCategoryIds.delete(id);
+       if (e.target.classList.contains("inc-cat-check")) {
+           const id = Number(e.target.value);
+           if (e.target.checked) selectedIncomeCategoryIds.add(id);
+           else selectedIncomeCategoryIds.delete(id);
 
-            renderIncomeCategoryPanel();
-            renderIncomes();
-        }
-    });
+           renderIncomeCategoryPanel();
+           renderIncomes();
+       }
+   });
 
     expCatClear.addEventListener("click", () => {
-        selectedExpenseCategoryIds = new Set(expenseCategories.map(x => x.id));
-        renderExpenseCategoryPanel();
-        renderExpenses();
-    });
+       selectedExpenseCategoryIds = new Set(expenseCategories.map(x => x.id));
+       renderExpenseCategoryPanel();
+       renderExpenses();
+   });
 
     incCatClear.addEventListener("click", () => {
-        selectedIncomeCategoryIds = new Set(incomeCategories.map(x => x.id));
-        renderIncomeCategoryPanel();
-        renderIncomes();
-    });
+       selectedIncomeCategoryIds = new Set(incomeCategories.map(x => x.id));
+       renderIncomeCategoryPanel();
+       renderIncomes();
+   });
 
     btn.addEventListener("click", load);
     debtTypeFilter.addEventListener("change", load);

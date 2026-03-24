@@ -11,7 +11,11 @@ namespace IdeioMuhasebe.Controllers
     public class AccountController : Controller
     {
         private readonly DatabaseContext _db;
-        public AccountController(DatabaseContext db) => _db = db;
+
+        public AccountController(DatabaseContext db)
+        {
+            _db = db;
+        }
 
         [HttpGet]
         public IActionResult Login()
@@ -27,9 +31,12 @@ namespace IdeioMuhasebe.Controllers
         public async Task<IActionResult> Login(LoginVm vm)
         {
             ViewBag.LayoutOff = true;
-            if (!ModelState.IsValid) return View(vm);
 
-            var user = await _db.Users.AsNoTracking()
+            if (!ModelState.IsValid)
+                return View(vm);
+
+            var user = await _db.Users
+                .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Username == vm.Username);
 
             if (user == null || user.password != vm.Password)
@@ -44,15 +51,31 @@ namespace IdeioMuhasebe.Controllers
                 new Claim(ClaimTypes.Name, user.Username)
             };
 
-            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-            await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+            var identity = new ClaimsIdentity(
+                claims,
+                CookieAuthenticationDefaults.AuthenticationScheme);
+
+            var principal = new ClaimsPrincipal(identity);
+
+            var authProperties = new AuthenticationProperties
+            {
+                IsPersistent = true,
+                AllowRefresh = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(14)
+            };
+
+            await HttpContext.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                principal,
+                authProperties);
 
             return RedirectToAction("Index", "Home");
         }
 
+        [HttpGet]
         public async Task<IActionResult> Logout()
         {
-            await HttpContext.SignOutAsync();
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return RedirectToAction("Login");
         }
     }
