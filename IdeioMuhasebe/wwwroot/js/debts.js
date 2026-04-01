@@ -30,7 +30,24 @@
     const wrapDebtPeriod = document.getElementById("wrapDebtPeriod");
     const debtPeriodCount = document.getElementById("debtPeriodCount");
 
-    app.setDefaultMonth(from, to);
+    const setCurrentMonthRange = () => {
+        const now = new Date();
+
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        const formatDateForInput = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+        };
+
+        from.value = formatDateForInput(firstDay);
+        to.value = formatDateForInput(lastDay);
+    };
+
+    setCurrentMonthRange();
 
     const setDefaultDueDate = () => {
         debtDueDate.value = new Date().toISOString().slice(0, 10);

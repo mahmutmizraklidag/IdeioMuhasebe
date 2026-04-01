@@ -60,8 +60,7 @@ namespace IdeioMuhasebe.Controllers
             var authProperties = new AuthenticationProperties
             {
                 IsPersistent = true,
-                AllowRefresh = true,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(14)
+                AllowRefresh = true
             };
 
             await HttpContext.SignInAsync(

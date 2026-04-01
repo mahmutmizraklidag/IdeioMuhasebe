@@ -14,12 +14,12 @@ builder.Services.AddDbContext<DatabaseContext>(options =>
 });
 
 // Data Protection key'lerini kalıcı sakla
-//var keyPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
-//Directory.CreateDirectory(keyPath);
+var keyPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
+Directory.CreateDirectory(keyPath);
 
-//builder.Services.AddDataProtection()
-//    .PersistKeysToFileSystem(new DirectoryInfo(keyPath))
-//    .SetApplicationName("IdeioMuhasebe");
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keyPath))
+    .SetApplicationName("IdeioMuhasebe");
 
 // MVC + otomatik antiforgery
 builder.Services.AddControllersWithViews(o =>
@@ -42,7 +42,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         opt.Cookie.HttpOnly = true;
         opt.Cookie.IsEssential = true;
         opt.Cookie.SameSite = SameSiteMode.Lax;
-        opt.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        opt.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
 
         opt.LoginPath = "/Account/Login";
         opt.LogoutPath = "/Account/Logout";
