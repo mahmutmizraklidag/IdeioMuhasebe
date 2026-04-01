@@ -49,11 +49,7 @@
     };
 
     // mobile sidebar
-    document.addEventListener("click", (e) => {
-        if (e.target?.id === "btnToggleSidebar") {
-            document.querySelector(".sidebar")?.classList.toggle("open");
-        }
-    });
+  
     const pad2 = (n) => String(n).padStart(2, "0");
 
     // "2026-03-06" gibi YYYY-MM-DD stringini timezone kaydırmadan parse eder

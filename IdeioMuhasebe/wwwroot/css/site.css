@@ -393,3 +393,59 @@ html {
     padding: .4rem .4rem;
    
 }
+.app-shell {
+    min-height: 100vh;
+    position: relative;
+}
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    z-index: 1045;
+    transform: translateX(-100%);
+    transition: transform .3s ease;
+    overflow-y: auto;
+}
+
+.content {
+    min-height: 100vh;
+    width: 100%;
+}
+
+body.sidebar-open .sidebar {
+    transform: translateX(0);
+}
+
+.sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .45);
+    opacity: 0;
+    visibility: hidden;
+    transition: all .3s ease;
+    z-index: 1040;
+}
+
+body.sidebar-open .sidebar-backdrop {
+    opacity: 1;
+    visibility: visible;
+}
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+}
+
+/* scroll daha düzgün olsun */
+.sidebar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.18);
+    border-radius: 20px;
+}
