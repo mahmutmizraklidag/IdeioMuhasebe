@@ -17,7 +17,6 @@ namespace IdeioMuhasebe.Models
 
         public bool IsRecurring { get; set; }
 
-        // ✅ YENİ: Kaç dönem (null/0 => sınırsız)
         public int? PeriodCount { get; set; }
     }
 }

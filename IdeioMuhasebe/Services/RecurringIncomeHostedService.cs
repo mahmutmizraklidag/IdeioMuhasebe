@@ -29,7 +29,6 @@ namespace IdeioMuhasebe.Services
                     delay = TimeSpan.FromSeconds(1);
 
                 await Task.Delay(delay, stoppingToken);
-
                 await RunOnce(stoppingToken);
             }
         }
@@ -40,8 +39,6 @@ namespace IdeioMuhasebe.Services
             {
                 using var scope = _scopeFactory.CreateScope();
                 var svc = scope.ServiceProvider.GetRequiredService<RecurringIncomeService>();
-
-                // ✅ 1 arg
                 await svc.EnsureGeneratedAsync(DateTime.Today);
             }
             catch

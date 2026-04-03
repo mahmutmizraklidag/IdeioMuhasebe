@@ -52,20 +52,17 @@ namespace IdeioMuhasebe.Controllers
             return list;
         }
 
-        // =========================================================
-        // EXISTING: DataV2 (aylık çizgi + donut + compare)
-        // =========================================================
         [HttpGet]
         public async Task<IActionResult> DataV2(
-     DateTime? from,
-     DateTime? to,
-     string mode = "expense",
-     int? debtTypeId = null,
-     int? incomeTypeId = null,
-     string expenseStatus = "total",
-     string incomeStatus = "total",
-     string expenseKind = "total" // total | normal | tax_total | tax_debt | tax_income
- )
+            DateTime? from,
+            DateTime? to,
+            string mode = "expense",
+            int? debtTypeId = null,
+            int? incomeTypeId = null,
+            string expenseStatus = "total",
+            string incomeStatus = "total",
+            string expenseKind = "total" // total | normal | tax_total | tax_debt | tax_income
+        )
         {
             var (f, toEx) = Range(from, to);
             var months = MonthsBetween(f, toEx);
@@ -99,7 +96,7 @@ namespace IdeioMuhasebe.Controllers
                     Amount = x.Amount,
                     NetAmount = x.NetAmount,
                     TaxAmount = x.TaxAmount,
-                    PaidAmount = x.PaidAmount ?? 0
+                    PaidAmount = x.PaidAmount ?? 0m
                 })
                 .ToListAsync();
 
@@ -119,17 +116,13 @@ namespace IdeioMuhasebe.Controllers
                 var debtMonth = debts.Where(x => MonthStart(x.DueDate) == m).ToList();
                 var incomeMonth = incomes.Where(x => MonthStart(x.DueDate) == m).ToList();
 
-                var normal = debtMonth.Sum(x => DebtNormalByStatus(x, expenseStatus));
-                var debtTax = debtMonth.Sum(x => DebtTaxByStatus(x, expenseStatus));
-                var incomeTax = incomeMonth.Sum(x => IncomeTaxByStatus(x, incomeStatus));
-
                 decimal total = expenseKind switch
                 {
-                    "normal" => normal,
-                    "tax_debt" => debtTax,
-                    "tax_income" => incomeTax,
-                    "tax_total" => debtTax + incomeTax,
-                    _ => normal + debtTax + incomeTax
+                    "normal" => debtMonth.Sum(x => DebtNormalByStatus(x, expenseStatus)),
+                    "tax_debt" => debtMonth.Sum(x => DebtTaxByStatus(x, expenseStatus)),
+                    "tax_income" => incomeMonth.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
+                    "tax_total" => debtMonth.Sum(x => DebtTaxByStatus(x, expenseStatus)) + incomeMonth.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
+                    _ => debtMonth.Sum(x => DebtTotalByStatus(x, expenseStatus)) + incomeMonth.Sum(x => IncomeTaxByStatus(x, incomeStatus))
                 };
 
                 return (object)new
@@ -182,7 +175,7 @@ namespace IdeioMuhasebe.Controllers
                     .Select(g => new
                     {
                         type = g.Key,
-                        total = g.Sum(x => DebtNormalByStatus(x, expenseStatus))
+                        total = g.Sum(x => DebtTotalByStatus(x, expenseStatus))
                     })
                     .Where(x => x.total > 0)
                     .OrderByDescending(x => x.total)
@@ -237,27 +230,25 @@ namespace IdeioMuhasebe.Controllers
 
             return Json(new { ok = true, mode = "expense", monthly = expenseMonthly, byType = expenseByType });
         }
-        // =========================================================
-        // NEW: CompareBar (2 sütun - kullanıcı istediği A/B'yi karşılaştırır)
-        // =========================================================
+
         [HttpGet]
         public async Task<IActionResult> CompareBar(
-       [FromQuery] DateTime? aFrom,
-       [FromQuery] DateTime? aTo,
-       [FromQuery] string aMetric = "income_total",
-       [FromQuery] int? aDebtTypeId = null,
-       [FromQuery] int? aIncomeTypeId = null,
-       [FromQuery] string aExpenseStatus = "total",
-       [FromQuery] string aIncomeStatus = "total",
+            [FromQuery] DateTime? aFrom,
+            [FromQuery] DateTime? aTo,
+            [FromQuery] string aMetric = "income_total",
+            [FromQuery] int? aDebtTypeId = null,
+            [FromQuery] int? aIncomeTypeId = null,
+            [FromQuery] string aExpenseStatus = "total",
+            [FromQuery] string aIncomeStatus = "total",
 
-       [FromQuery] DateTime? bFrom = null,
-       [FromQuery] DateTime? bTo = null,
-       [FromQuery] string bMetric = "expense_total",
-       [FromQuery] int? bDebtTypeId = null,
-       [FromQuery] int? bIncomeTypeId = null,
-       [FromQuery] string bExpenseStatus = "total",
-       [FromQuery] string bIncomeStatus = "total"
-   )
+            [FromQuery] DateTime? bFrom = null,
+            [FromQuery] DateTime? bTo = null,
+            [FromQuery] string bMetric = "expense_total",
+            [FromQuery] int? bDebtTypeId = null,
+            [FromQuery] int? bIncomeTypeId = null,
+            [FromQuery] string bExpenseStatus = "total",
+            [FromQuery] string bIncomeStatus = "total"
+        )
         {
             aMetric = (aMetric ?? "income_total").ToLowerInvariant();
             bMetric = (bMetric ?? "expense_total").ToLowerInvariant();
@@ -310,7 +301,7 @@ namespace IdeioMuhasebe.Controllers
                     Amount = x.Amount,
                     NetAmount = x.NetAmount,
                     TaxAmount = x.TaxAmount,
-                    PaidAmount = x.PaidAmount ?? 0
+                    PaidAmount = x.PaidAmount ?? 0m
                 })
                 .ToListAsync();
 
@@ -333,12 +324,12 @@ namespace IdeioMuhasebe.Controllers
                 "tax_income" => incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
                 "tax_total" => debts.Sum(x => DebtTaxByStatus(x, expenseStatus)) + incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
                 "expense_total" =>
-                    debts.Sum(x => DebtNormalByStatus(x, expenseStatus)) +
-                    debts.Sum(x => DebtTaxByStatus(x, expenseStatus)) +
+                    debts.Sum(x => DebtTotalByStatus(x, expenseStatus)) +
                     incomes.Sum(x => IncomeTaxByStatus(x, incomeStatus)),
                 _ => incomes.Sum(x => IncomeTotalByStatus(x, incomeStatus))
             };
         }
+
         private class DebtStatRow
         {
             public DateTime DueDate { get; set; }
@@ -358,75 +349,78 @@ namespace IdeioMuhasebe.Controllers
             public decimal ReceivedAmount { get; set; }
         }
 
-        private static decimal Clamp(decimal value, decimal max)
-        {
-            if (value < 0) return 0m;
-            if (value > max) return max;
-            return value;
-        }
+        // =========================================================
+        // ✅ GÜÇLENDİRİLMİŞ PaidAmount VE ReceivedAmount HESAPLAMALARI
+        // Fazla ödeme durumunda "Toplam" tutarlar doğrudan yeni orana göre evrimleşir.
+        // =========================================================
 
-        private static decimal DebtNormalTotal(DebtStatRow x)
+        private static decimal DebtTotalByStatus(DebtStatRow x, string status)
         {
-            return (x.NetAmount == 0m && x.TaxAmount == 0m) ? x.Amount : x.NetAmount;
-        }
-
-        private static decimal DebtPaidRatio(DebtStatRow x)
-        {
-            if (x.Amount <= 0) return 0m;
-            return Clamp(x.PaidAmount, x.Amount) / x.Amount;
-        }
-
-        private static decimal DebtNormalByStatus(DebtStatRow x, string status)
-        {
-            var total = DebtNormalTotal(x);
-            var paid = total * DebtPaidRatio(x);
-
+            // Eğer ödenen tutar, faturayı aştıysa; yeni "Toplam" artık ödenen tutardır.
+            var total = x.PaidAmount > x.Amount ? x.PaidAmount : x.Amount;
             return status switch
             {
-                "paid" => paid,
-                "unpaid" => total - paid,
-                _ => total
-            };
-        }
-
-        private static decimal DebtTaxByStatus(DebtStatRow x, string status)
-        {
-            var total = x.TaxAmount;
-            var paid = total * DebtPaidRatio(x);
-
-            return status switch
-            {
-                "paid" => paid,
-                "unpaid" => total - paid,
+                "paid" => x.PaidAmount,
+                "unpaid" => total - x.PaidAmount,
                 _ => total
             };
         }
 
         private static decimal IncomeTotalByStatus(IncomeStatRow x, string status)
         {
-            var paid = Clamp(x.ReceivedAmount, x.Amount);
+            // Eğer tahsil edilen tutar, faturayı aştıysa; yeni "Toplam" artık tahsil edilen tutardır.
+            var total = x.ReceivedAmount > x.Amount ? x.ReceivedAmount : x.Amount;
+            return status switch
+            {
+                "paid" => x.ReceivedAmount,
+                "unpaid" => total - x.ReceivedAmount,
+                _ => total
+            };
+        }
+
+        private static decimal DebtNormalByStatus(DebtStatRow x, string status)
+        {
+            var baseNormal = (x.NetAmount > 0) ? x.NetAmount : (x.Amount - x.TaxAmount);
+            var ratio = x.Amount > 0 ? (x.PaidAmount / x.Amount) : 0m;
+
+            var paidNormal = baseNormal * ratio;
+            var totalNormal = ratio > 1m ? paidNormal : baseNormal;
 
             return status switch
             {
-                "paid" => paid,
-                "unpaid" => x.Amount - paid,
-                _ => x.Amount
+                "paid" => paidNormal,
+                "unpaid" => totalNormal - paidNormal,
+                _ => totalNormal
+            };
+        }
+
+        private static decimal DebtTaxByStatus(DebtStatRow x, string status)
+        {
+            var ratio = x.Amount > 0 ? (x.PaidAmount / x.Amount) : 0m;
+
+            var paidTax = x.TaxAmount * ratio;
+            var totalTax = ratio > 1m ? paidTax : x.TaxAmount;
+
+            return status switch
+            {
+                "paid" => paidTax,
+                "unpaid" => totalTax - paidTax,
+                _ => totalTax
             };
         }
 
         private static decimal IncomeTaxByStatus(IncomeStatRow x, string status)
         {
-            if (x.Amount <= 0)
-                return status == "total" ? x.TaxAmount : 0m;
+            var ratio = x.Amount > 0 ? (x.ReceivedAmount / x.Amount) : 0m;
 
-            var paidRatio = Clamp(x.ReceivedAmount, x.Amount) / x.Amount;
-            var paidTax = x.TaxAmount * paidRatio;
+            var paidTax = x.TaxAmount * ratio;
+            var totalTax = ratio > 1m ? paidTax : x.TaxAmount; // <- Düzeltilen temel nokta burası
 
             return status switch
             {
                 "paid" => paidTax,
-                "unpaid" => x.TaxAmount - paidTax,
-                _ => x.TaxAmount
+                "unpaid" => totalTax - paidTax,
+                _ => totalTax
             };
         }
     }

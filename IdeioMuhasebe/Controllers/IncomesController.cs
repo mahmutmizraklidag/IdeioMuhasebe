@@ -37,24 +37,8 @@ namespace IdeioMuhasebe.Controllers
             var f = from.Value.Date;
             var t = to.Value.Date;
             if (t < f) (f, t) = (t, f);
+
             return (f, t.AddDays(1));
-        }
-
-        private static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
-
-        private static int MonthDiff(DateTime aMonth, DateTime bMonth)
-            => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
-
-        // “Son 1 dönem” => endMonth - dueMonth == 1
-        private static bool LastOnePeriodWarning(DateTime dueDate, DateTime startDate, int periodCount)
-        {
-            if (periodCount <= 0) return false;
-            var startMonth = MonthStart(startDate);
-            var endMonth = startMonth.AddMonths(periodCount - 1);
-            var dueMonth = MonthStart(dueDate);
-
-            var left = MonthDiff(dueMonth, endMonth);
-            return left == 1;
         }
 
         [HttpGet]
@@ -74,7 +58,7 @@ namespace IdeioMuhasebe.Controllers
             var q = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
                 .Include(x => x.RecurringIncome)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && x.IsDeleted == false);
 
             if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
                 q = q.Where(x => x.IncomeTypeId == incomeTypeId.Value);
@@ -141,7 +125,6 @@ namespace IdeioMuhasebe.Controllers
 
                     x.recurringIncomeId,
                     x.recurringPeriodCount,
-
                     recurringPeriodText = periodText
                 };
             }).ToList();
@@ -174,9 +157,12 @@ namespace IdeioMuhasebe.Controllers
             }
 
             var total = net + tax;
-            if (total <= 0) return BadRequest(new { ok = false, message = "Net + Vergi toplamı 0'dan büyük olmalı." });
+            if (total <= 0)
+                return BadRequest(new { ok = false, message = "Net + Vergi toplamı 0'dan büyük olmalı." });
 
-            int? periodCount = (vm.PeriodCount.HasValue && vm.PeriodCount.Value > 0) ? vm.PeriodCount.Value : (int?)null;
+            int? periodCount = (vm.PeriodCount.HasValue && vm.PeriodCount.Value > 0)
+                ? vm.PeriodCount.Value
+                : (int?)null;
 
             if (vm.Id == 0)
             {
@@ -210,12 +196,14 @@ namespace IdeioMuhasebe.Controllers
                             IsActive = true,
                             UpdatedDate = DateTime.Now
                         };
+
                         _db.RecurringIncomes.Add(rule);
                         await _db.SaveChangesAsync();
                     }
                     else
                     {
-                        if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
+                        if (vm.DueDate.Date < rule.StartDate.Date)
+                            rule.StartDate = vm.DueDate.Date;
 
                         rule.NetAmount = net;
                         rule.TaxAmount = tax;
@@ -232,6 +220,8 @@ namespace IdeioMuhasebe.Controllers
                     recurringId = rule.Id;
                 }
 
+                var firstReceived = vm.IsReceived ? total : 0m;
+
                 var ent = new Income
                 {
                     IncomeTypeId = vm.IncomeTypeId,
@@ -239,10 +229,8 @@ namespace IdeioMuhasebe.Controllers
                     NetAmount = net,
                     TaxAmount = tax,
                     Amount = total,
-
-                    // ✅ ilk oluştururken checkbox işaretliyse tam tahsil edilmiş başlat
-                    ReceivedAmount = vm.IsReceived ? total : 0m,
-
+                    ReceivedAmount = firstReceived,
+                    CarryForwardBalance = total - firstReceived,
                     DueDate = vm.DueDate.Date,
                     Payer = payer,
                     IsReceived = vm.IsReceived,
@@ -259,10 +247,15 @@ namespace IdeioMuhasebe.Controllers
                 return Json(new { ok = true, id = ent.Id });
             }
 
-            var existing = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == vm.Id);
-            if (existing == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+            var existing = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == vm.Id && !x.IsDeleted);
+            if (existing == null)
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
             var oldWasReceived = existing.IsReceived;
+            var oldAmount = existing.Amount;
+
+            var currentReceived = existing.ReceivedAmount;
+            if (currentReceived < 0m) currentReceived = 0m;
 
             existing.IncomeTypeId = vm.IncomeTypeId;
             existing.Name = name;
@@ -275,21 +268,18 @@ namespace IdeioMuhasebe.Controllers
 
             if (vm.IsReceived)
             {
-                existing.ReceivedAmount = total;
-                existing.IsReceived = true;
+                if (currentReceived < total)
+                    currentReceived = total;
             }
             else
             {
-                if (oldWasReceived)
-                {
-                    existing.ReceivedAmount = 0m;
-                }
-
-                if (existing.ReceivedAmount > total)
-                    existing.ReceivedAmount = total;
-
-                existing.IsReceived = false;
+                if (oldWasReceived && currentReceived == oldAmount)
+                    currentReceived = 0m;
             }
+
+            existing.ReceivedAmount = currentReceived;
+            existing.IsReceived = currentReceived >= total;
+            existing.CarryForwardBalance = total - currentReceived;
 
             if (!vm.IsRecurring)
             {
@@ -300,7 +290,7 @@ namespace IdeioMuhasebe.Controllers
 
             {
                 var day = vm.DueDate.Day;
-                RecurringIncome rule = null;
+                RecurringIncome? rule = null;
 
                 if (existing.RecurringIncomeId.HasValue)
                     rule = await _db.RecurringIncomes.FirstOrDefaultAsync(r => r.Id == existing.RecurringIncomeId.Value);
@@ -344,7 +334,10 @@ namespace IdeioMuhasebe.Controllers
                 rule.Amount = total;
                 rule.Payer = payer;
                 rule.DayOfMonth = day;
-                if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
+
+                if (vm.DueDate.Date < rule.StartDate.Date)
+                    rule.StartDate = vm.DueDate.Date;
+
                 rule.PeriodCount = periodCount;
                 rule.IsActive = true;
                 rule.UpdatedDate = DateTime.Now;
@@ -362,29 +355,53 @@ namespace IdeioMuhasebe.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete([FromBody] int id)
         {
-            var ent = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == id);
-            if (ent == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+            // YENİ: && !x.IsDeleted eklendi
+            var ent = await _db.Incomes.FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            if (ent == null)
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı veya zaten silinmiş." });
 
-            if (ent.RecurringIncomeId.HasValue)
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            try
             {
-                var m = new DateTime(ent.DueDate.Year, ent.DueDate.Month, 1);
-                var rid = ent.RecurringIncomeId.Value;
-
-                var exists = await _db.RecurringIncomeSkips.AnyAsync(s => s.RecurringIncomeId == rid && s.Month == m);
-                if (!exists)
+                if (ent.RecurringIncomeId.HasValue)
                 {
-                    _db.RecurringIncomeSkips.Add(new Entities.RecurringIncomeSkip
+                    var month = new DateTime(ent.DueDate.Year, ent.DueDate.Month, 1);
+                    var rid = ent.RecurringIncomeId.Value;
+
+                    var already = await _db.RecurringIncomeSkips
+                        .AnyAsync(s => s.RecurringIncomeId == rid && s.Month == month);
+
+                    if (!already)
                     {
-                        RecurringIncomeId = rid,
-                        Month = m
-                    });
+                        _db.RecurringIncomeSkips.Add(new RecurringIncomeSkip
+                        {
+                            RecurringIncomeId = rid,
+                            Month = month,
+                            CreateDate = DateTime.Now
+                        });
+                    }
                 }
+
+                // ESKİ HALİ: _db.Incomes.Remove(ent);
+                // YENİ HALİ: Soft Delete
+                ent.IsDeleted = true;
+                ent.UpdatedDate = DateTime.Now;
+
+                await _db.SaveChangesAsync();
+
+                await tx.CommitAsync();
+                return Json(new { ok = true });
             }
-
-            _db.Incomes.Remove(ent);
-            await _db.SaveChangesAsync();
-
-            return Json(new { ok = true });
+            catch (DbUpdateException)
+            {
+                await tx.RollbackAsync();
+                return BadRequest(new { ok = false, message = "Silinemedi (veritabanı kısıtı/ilişki hatası)." });
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync();
+                return BadRequest(new { ok = false, message = "Silinemedi: " + ex.Message });
+            }
         }
     }
 }

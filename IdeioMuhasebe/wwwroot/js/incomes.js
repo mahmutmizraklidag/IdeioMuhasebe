@@ -1,282 +1,281 @@
 ﻿(() => {
+    const tokenEl = document.querySelector('input[name="__RequestVerificationToken"]');
+    const token = tokenEl ? tokenEl.value : "";
+
     const from = document.getElementById("fromDate");
     const to = document.getElementById("toDate");
     const btnApply = document.getElementById("btnApply");
+
     const typeFilter = document.getElementById("typeFilter");
     const receivedFilter = document.getElementById("receivedFilter");
-
     const body = document.getElementById("incomeBody");
 
-    // side form
     const sideTitle = document.getElementById("sideTitle");
     const btnNew = document.getElementById("btnNewIncome");
-    const btnReset = document.getElementById("btnResetIncome");
+    const btnAddFab = document.getElementById("btnAddIncome");
     const btnSave = document.getElementById("btnSaveIncome");
+    const btnReset = document.getElementById("btnResetIncome");
+    const err = document.getElementById("incomeErr");
 
     const incomeId = document.getElementById("incomeId");
     const incomeTypeId = document.getElementById("incomeTypeId");
     const incomeName = document.getElementById("incomeName");
-    const incomeNet = document.getElementById("incomeNetAmount");
-    const incomeTax = document.getElementById("incomeTaxAmount");
+    const incomeNetAmount = document.getElementById("incomeNetAmount");
+    const incomeTaxAmount = document.getElementById("incomeTaxAmount");
     const incomeAmount = document.getElementById("incomeAmount");
     const incomeDueDate = document.getElementById("incomeDueDate");
     const incomePayer = document.getElementById("incomePayer");
     const incomeIsReceived = document.getElementById("incomeIsReceived");
-    const errEl = document.getElementById("incomeErr");
-
-    // recurring
     const incomeIsRecurring = document.getElementById("incomeIsRecurring");
-    let wrapPeriod = document.getElementById("wrapIncomePeriod");
-    let periodCountEl = document.getElementById("incomePeriodCount");
+    const incomePeriodCount = document.getElementById("incomePeriodCount");
+    const wrapIncomePeriod = document.getElementById("wrapIncomePeriod");
 
     const setCurrentMonthRange = () => {
         const now = new Date();
-
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-        const formatDateForInput = (date) => {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, "0");
-            const day = String(date.getDate()).padStart(2, "0");
-            return `${year}-${month}-${day}`;
+        const format = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, "0");
+            const d = String(date.getDate()).padStart(2, "0");
+            return `${y}-${m}-${d}`;
         };
 
-        from.value = formatDateForInput(firstDay);
-        to.value = formatDateForInput(lastDay);
-    };
-
-    setCurrentMonthRange();
-
-    const setDefaultDueDate = () => {
-        if (incomeDueDate) incomeDueDate.value = new Date().toISOString().slice(0, 10);
+        from.value = format(firstDay);
+        to.value = format(lastDay);
+        incomeDueDate.value = format(new Date());
     };
 
     const calcTotal = () => {
-        if (!incomeNet || !incomeTax) return;
-        const net = Number(incomeNet.value || 0);
-        const tax = Number(incomeTax.value || 0);
-        const total = net + tax;
-        if (incomeAmount) incomeAmount.value = total.toFixed(2);
+        const net = Number(incomeNetAmount.value || 0);
+        const tax = Number(incomeTaxAmount.value || 0);
+        incomeAmount.value = (net + tax).toFixed(2);
     };
 
-    // ✅ Eğer cshtml’de yoksa, “kaç dönem” alanını otomatik ekle
-    const ensurePeriodDom = () => {
-        if (!incomeIsRecurring) return;
-
-        wrapPeriod = document.getElementById("wrapIncomePeriod");
-        periodCountEl = document.getElementById("incomePeriodCount");
-
-        if (wrapPeriod && periodCountEl) return;
-
-        // checkbox’ın bulunduğu yere yakın bir yere ekleyelim
-        const host =
-            incomeIsRecurring.closest(".form-check")?.parentElement ||
-            incomeIsRecurring.parentElement ||
-            document.body;
-
-        // zaten eklenmiş olabilir (id yoksa) — tekrar eklemeyelim
-        if (document.getElementById("wrapIncomePeriod")) {
-            wrapPeriod = document.getElementById("wrapIncomePeriod");
-            periodCountEl = document.getElementById("incomePeriodCount");
-            return;
-        }
-
-        const div = document.createElement("div");
-        div.className = "mt-2 d-none";
-        div.id = "wrapIncomePeriod";
-        div.innerHTML = `
-      <label class="form-label">Kaç dönem yenilensin?</label>
-      <input type="number" min="1" class="form-control" id="incomePeriodCount" placeholder="Boş bırakılırsa sınırsız" />
-      <div class="small text-muted mt-1">Örn: 12 = 12 ay boyunca her ay oluşur.</div>
-    `;
-
-        // checkbox bloğunun hemen altına ekle
-        const formCheck = incomeIsRecurring.closest(".form-check");
-        if (formCheck && formCheck.nextSibling) {
-            formCheck.insertAdjacentElement("afterend", div);
+    const toggleRecurringWrap = () => {
+        if (incomeIsRecurring.checked) {
+            wrapIncomePeriod.classList.remove("d-none");
         } else {
-            host.appendChild(div);
+            wrapIncomePeriod.classList.add("d-none");
+            incomePeriodCount.value = "";
         }
-
-        wrapPeriod = document.getElementById("wrapIncomePeriod");
-        periodCountEl = document.getElementById("incomePeriodCount");
-    };
-
-    const togglePeriod = () => {
-        ensurePeriodDom();
-        const on = !!incomeIsRecurring?.checked;
-
-        if (wrapPeriod) wrapPeriod.classList.toggle("d-none", !on);
-        if (!on && periodCountEl) periodCountEl.value = "";
     };
 
     const resetForm = () => {
-        if (sideTitle) sideTitle.textContent = "Gelir Ekle";
-        if (incomeId) incomeId.value = "0";
-        if (incomeName) incomeName.value = "";
-        if (incomeNet) incomeNet.value = "";
-        if (incomeTax) incomeTax.value = "";
-        if (incomePayer) incomePayer.value = "";
-        if (incomeIsReceived) incomeIsReceived.checked = false;
+        sideTitle.textContent = "Gelir Ekle";
+        incomeId.value = "0";
+        incomeTypeId.value = "";
+        incomeName.value = "";
+        incomeNetAmount.value = "";
+        incomeTaxAmount.value = "";
+        incomeAmount.value = "";
+        incomeDueDate.value = "";
+        incomePayer.value = "";
+        incomeIsReceived.checked = false;
+        incomeIsRecurring.checked = false;
+        incomePeriodCount.value = "";
+        wrapIncomePeriod.classList.add("d-none");
+        err.classList.add("d-none");
 
-        if (incomeIsRecurring) incomeIsRecurring.checked = false;
-        ensurePeriodDom();
-        if (periodCountEl) periodCountEl.value = "";
-
-        if (errEl) errEl.classList.add("d-none");
-        setDefaultDueDate();
-        calcTotal();
-        togglePeriod();
-    };
-
-    const openEdit = (x) => {
-        if (sideTitle) sideTitle.textContent = "Gelir Düzenle";
-        if (incomeId) incomeId.value = x.id;
-        if (incomeTypeId) incomeTypeId.value = x.incomeTypeId;
-        if (incomeName) incomeName.value = x.name;
-
-        if (incomeNet) incomeNet.value = x.netAmount ?? 0;
-        if (incomeTax) incomeTax.value = x.taxAmount ?? 0;
-        if (incomeDueDate) incomeDueDate.value = x.dueDate;
-        if (incomePayer) incomePayer.value = x.payer ?? "";
-        if (incomeIsReceived) incomeIsReceived.checked = !!x.isReceived;
-
-        if (incomeIsRecurring) incomeIsRecurring.checked = !!x.recurringIncomeId;
-
-        ensurePeriodDom();
-        if (periodCountEl) periodCountEl.value = (x.recurringPeriodCount ?? "") || "";
-
-        if (errEl) errEl.classList.add("d-none");
-        calcTotal();
-        togglePeriod();
-
-        document.querySelector(".sticky-side")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, "0");
+        const d = String(now.getDate()).padStart(2, "0");
+        incomeDueDate.value = `${y}-${m}-${d}`;
     };
 
     const loadTypes = async () => {
         const data = await app.get("/IncomeTypes/Options");
-        if (typeFilter) {
-            typeFilter.innerHTML =
-                `<option value="">Tümü</option>` +
-                data.list.map((x) => `<option value="${x.id}">${x.name}</option>`).join("");
-        }
-        if (incomeTypeId) {
-            incomeTypeId.innerHTML = data.list.map((x) => `<option value="${x.id}">${x.name}</option>`).join("");
+
+        typeFilter.innerHTML =
+            `<option value="">Tümü</option>` +
+            data.list.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+
+        incomeTypeId.innerHTML =
+            `<option value="">Seçiniz</option>` +
+            data.list.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+    };
+
+    const rowHtml = (x) => {
+        const status = x.isReceived
+   ? `<span class="badge bg-success">Tahsil Edildi</span>`
+   : `<span class="badge bg-warning text-dark">Tahsil Edilmedi</span>`;
+
+        const recurringBadge = x.recurringPeriodText
+   ? `<span class="badge bg-light text-dark border ms-1">${x.recurringPeriodText}</span>`
+   : "";
+
+        return `
+            <tr>
+                <td>${app.formatDateTr(x.dueDate)}</td>
+                <td>${x.incomeType}</td>
+                <td>${x.name} ${recurringBadge}</td>
+                <td>${x.payer ?? "-"}</td>
+                <td class="text-end">${app.money(x.amount)}</td>
+                <td class="text-end">${status}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-light me-1 btn-edit" data-id="${x.id}">Düzenle</button>
+                    <button class="btn btn-sm btn-danger btn-del" data-id="${x.id}">Sil</button>
+                </td>
+            </tr>
+        `;
+    };
+
+    let currentList = [];
+
+    const load = async () => {
+        const isReceived =
+            receivedFilter.value === ""
+   ? null
+   : receivedFilter.value === "1";
+
+        const data = await app.get("/Incomes/List", {
+       from: from.value,
+       to: to.value,
+       incomeTypeId: typeFilter.value,
+       isReceived
+   });
+
+        currentList = data.list || [];
+        body.innerHTML = currentList.map(rowHtml).join("");
+
+        if (!currentList.length) {
+            body.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">Kayıt bulunamadı.</td>
+                </tr>
+            `;
         }
     };
 
-    const load = async () => {
-        const params = {
-            from: from?.value,
-            to: to?.value,
-            incomeTypeId: typeFilter?.value || ""
+    const fillForm = (x) => {
+        sideTitle.textContent = "Gelir Düzenle";
+        incomeId.value = x.id;
+        incomeTypeId.value = x.incomeTypeId;
+        incomeName.value = x.name ?? "";
+        incomeNetAmount.value = x.netAmount ?? 0;
+        incomeTaxAmount.value = x.taxAmount ?? 0;
+        incomeAmount.value = x.amount ?? 0;
+        incomeDueDate.value = x.dueDate;
+        incomePayer.value = x.payer ?? "";
+        incomeIsReceived.checked = !!x.isReceived;
+        incomeIsRecurring.checked = !!x.recurringIncomeId;
+        incomePeriodCount.value = x.recurringPeriodCount ?? "";
+        toggleRecurringWrap();
+        err.classList.add("d-none");
+    };
+
+    const save = async () => {
+        err.classList.add("d-none");
+
+        const payload = {
+            id: Number(incomeId.value || 0),
+            incomeTypeId: Number(incomeTypeId.value || 0),
+            name: incomeName.value.trim(),
+            netAmount: Number(incomeNetAmount.value || 0),
+            taxAmount: Number(incomeTaxAmount.value || 0),
+            amount: Number(incomeAmount.value || 0),
+            dueDate: incomeDueDate.value,
+            payer: incomePayer.value.trim(),
+            isReceived: incomeIsReceived.checked,
+            isRecurring: incomeIsRecurring.checked,
+            periodCount: incomePeriodCount.value ? Number(incomePeriodCount.value) : null
         };
 
-        if (receivedFilter) {
-            params.isReceived =
-                receivedFilter.value === ""
-                    ? ""
-                    : (receivedFilter.value === "1" ? "true" : "false");
+        if (!payload.incomeTypeId || !payload.name || !payload.dueDate || payload.amount <= 0) {
+            err.classList.remove("d-none");
+            return;
         }
 
-        const data = await app.get("/Incomes/List", params);
+        await fetch("/Incomes/Upsert", {
+       method: "POST",
+       headers: {
+           "Content-Type": "application/json",
+           "RequestVerificationToken": token
+       },
+       body: JSON.stringify(payload)
+   }).then(async r => {
+       const data = await r.json();
+       if (!r.ok || data.ok === false) {
+           throw new Error(data.message || "Kayıt başarısız.");
+       }
+   });
 
-        body.innerHTML = "";
-        data.list.forEach((x) => {
-            const encoded = encodeURIComponent(JSON.stringify(x));
+        resetForm();
+        await load();
+    };
 
-            
-            const periodBadge = x.recurringPeriodText
-                ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
-                : "";
-            body.insertAdjacentHTML("beforeend", `
-        <tr>
-          <td class="text-muted">${app.formatDateTr(x.dueDate)}</td>
-          <td><a href="/IncomeTypes/Details/${x.incomeTypeId}" class="link-light">${x.incomeType}</a></td>
-          
-            <td class="fw-semibold">${x.name}${periodBadge}</td>
-          
-          <td class="text-muted">${x.payer ?? ""}</td>
-          <td class="text-end">${app.money(x.amount)}</td>
-          <td class="text-end">${app.dueBadgeHtml(x.dueDate, x.isReceived)}</td>
-          <td class="text-end text-nowrap">
-            <div class="d-inline-flex flex-nowrap gap-1">
-              <button class="btn btn-sm btn-primary py-1 px-2" data-act="edit" data-json="${encoded}">Düzenle</button>
-              <button class="btn btn-sm btn-danger  py-1 px-2" data-act="del" data-id="${x.id}">Sil</button>
-            </div>
-          </td>
-        </tr>
-      `);
-        });
+    const del = async (id) => {
+        if (!confirm("Bu kaydı silmek istediğinize emin misiniz?")) return;
+
+        await fetch("/Incomes/Delete", {
+       method: "POST",
+       headers: {
+           "Content-Type": "application/json",
+           "RequestVerificationToken": token
+       },
+       body: JSON.stringify(id)
+   }).then(async r => {
+       const data = await r.json();
+       if (!r.ok || data.ok === false) {
+           throw new Error(data.message || "Silme işlemi başarısız.");
+       }
+   });
+
+        await load();
+        if (Number(incomeId.value) === Number(id)) {
+            resetForm();
+        }
     };
 
     body.addEventListener("click", async (e) => {
-        const btn = e.target.closest("button");
-        if (!btn) return;
+       const editBtn = e.target.closest(".btn-edit");
+       const delBtn = e.target.closest(".btn-del");
 
-        const act = btn.dataset.act;
+       if (editBtn) {
+           const id = Number(editBtn.dataset.id);
+           const item = currentList.find(x => x.id === id);
+           if (item) fillForm(item);
+           return;
+       }
 
-        if (act === "edit") {
-            const x = JSON.parse(decodeURIComponent(btn.dataset.json));
-            openEdit(x);
-            return;
-        }
+       if (delBtn) {
+           const id = Number(delBtn.dataset.id);
+           try {
+               await del(id);
+           } catch (ex) {
+               alert(ex.message || "Silinemedi.");
+           }
+       }
+   });
 
-        if (act === "del") {
-            const id = Number(btn.dataset.id);
-            if (!confirm("Silmek istediğine emin misin?")) return;
+    btnApply.addEventListener("click", load);
+    btnNew.addEventListener("click", resetForm);
+    btnReset.addEventListener("click", resetForm);
+    btnSave.addEventListener("click", async () => {
+       try {
+           await save();
+       } catch (ex) {
+           alert(ex.message || "Kaydedilemedi.");
+       }
+   });
 
-            await app.postJson("/Incomes/Delete", id);
-            if (incomeId && Number(incomeId.value) === id) resetForm();
-            await load();
-        }
-    });
+    if (btnAddFab) {
+        btnAddFab.addEventListener("click", resetForm);
+    }
 
-    btnSave?.addEventListener("click", async () => {
-        const net = Number(incomeNet?.value || 0);
-        const tax = Number(incomeTax?.value || 0);
+    incomeNetAmount.addEventListener("input", calcTotal);
+    incomeTaxAmount.addEventListener("input", calcTotal);
+    incomeIsRecurring.addEventListener("change", toggleRecurringWrap);
 
-        ensurePeriodDom();
-
-        const payload = {
-            id: Number(incomeId?.value || 0),
-            incomeTypeId: Number(incomeTypeId?.value || 0),
-            name: (incomeName?.value || "").trim(),
-            netAmount: net,
-            taxAmount: tax,
-            dueDate: incomeDueDate?.value,
-            payer: (incomePayer?.value || "").trim(),
-            isReceived: !!incomeIsReceived?.checked,
-
-            isRecurring: !!incomeIsRecurring?.checked,
-            periodCount: incomeIsRecurring?.checked ? Number(periodCountEl?.value || 0) : null
-        };
-
-        if (!payload.incomeTypeId || !payload.name || !payload.dueDate || (payload.netAmount + payload.taxAmount) <= 0) {
-            if (errEl) errEl.classList.remove("d-none");
-            return;
-        }
-
-        await app.postJson("/Incomes/Upsert", payload);
-        resetForm();
-        await load();
-    });
-
-    btnNew?.addEventListener("click", resetForm);
-    btnReset?.addEventListener("click", resetForm);
-
-    btnApply?.addEventListener("click", load);
-    typeFilter?.addEventListener("change", load);
-    receivedFilter?.addEventListener("change", load);
-    from?.addEventListener("change", load);
-    to?.addEventListener("change", load);
-
-    incomeNet?.addEventListener("input", calcTotal);
-    incomeTax?.addEventListener("input", calcTotal);
-    incomeIsRecurring?.addEventListener("change", togglePeriod);
+    from.addEventListener("change", load);
+    to.addEventListener("change", load);
+    typeFilter.addEventListener("change", load);
+    receivedFilter.addEventListener("change", load);
 
     (async () => {
+        setCurrentMonthRange();
         await loadTypes();
         resetForm();
         await load();

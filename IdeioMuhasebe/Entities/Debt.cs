@@ -26,6 +26,10 @@ namespace IdeioMuhasebe.Entities
         public decimal TaxAmount { get; set; }
         [Column(TypeName = "decimal(18,2)")]
         public decimal? PaidAmount { get; set; }
+        // + ise devreden eksik ödeme
+        // - ise devreden fazla ödeme kredisi
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal CarryForwardBalance { get; set; } = 0m;
         [Required]
         [DataType(DataType.Date)]
         [Display(Name = "Son Ödeme Tarihi")]
@@ -40,6 +44,8 @@ namespace IdeioMuhasebe.Entities
         // YENİ EKLENEN ALAN: Güncelleme Tarihi
         [Display(Name = "Son Güncelleme")]
         public DateTime? UpdatedDate { get; set; }
+
+        public bool IsDeleted { get; set; } = false;
 
         // Yabancı Anahtar (Foreign Key)
         public int DebtTypeId { get; set; }

@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using IdeioMuhasebe.Data;
+using IdeioMuhasebe.Models;
 using IdeioMuhasebe.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,26 +31,22 @@ namespace IdeioMuhasebe.Controllers
 
         private static (DateTime from, DateTime toExclusive) Range(DateTime? from, DateTime? to)
         {
-            if (from == null || to == null) return DefaultMonthRange();
+            if (from == null || to == null)
+                return DefaultMonthRange();
 
             var f = from.Value.Date;
             var t = to.Value.Date;
-            if (t < f) (f, t) = (t, f);
+
+            if (t < f)
+                (f, t) = (t, f);
+
             return (f, t.AddDays(1));
         }
 
         private static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
+
         private static int MonthDiff(DateTime aMonth, DateTime bMonth)
             => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
-
-        private static bool LastOnePeriodWarning(DateTime dueDate, DateTime startDate, int periodCount)
-        {
-            if (periodCount <= 0) return false;
-            var startMonth = MonthStart(startDate);
-            var endMonth = startMonth.AddMonths(periodCount - 1);
-            var dueMonth = MonthStart(dueDate);
-            return MonthDiff(dueMonth, endMonth) == 1;
-        }
 
         [HttpGet]
         public IActionResult Index() => View();
@@ -57,27 +54,9 @@ namespace IdeioMuhasebe.Controllers
         [HttpGet]
         public async Task<IActionResult> List(DateTime? from, DateTime? to, int? incomeTypeId)
         {
-            var now = DateTime.Today;
-            var defaultFrom = new DateTime(now.Year, now.Month, 1);
-            var defaultToEx = defaultFrom.AddMonths(1);
+            await _recurring.EnsureGeneratedAsync(DateTime.Today);
 
-            DateTime f, toEx;
-            if (from == null || to == null)
-            {
-                f = defaultFrom;
-                toEx = defaultToEx;
-            }
-            else
-            {
-                f = from.Value.Date;
-                var t = to.Value.Date;
-                if (t < f) (f, t) = (t, f);
-                toEx = t.AddDays(1);
-            }
-
-            static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
-            static int MonthDiff(DateTime aMonth, DateTime bMonth)
-                => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
+            var (f, toEx) = Range(from, to);
 
             var q = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
@@ -96,6 +75,7 @@ namespace IdeioMuhasebe.Controllers
                     name = x.Name,
                     totalAmount = x.Amount,
                     receivedAmount = x.ReceivedAmount,
+                    carryForwardBalance = x.CarryForwardBalance,
                     dueDateDt = x.DueDate,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     incomeType = x.IncomeType.Name,
@@ -110,8 +90,14 @@ namespace IdeioMuhasebe.Controllers
 
             var list = raw.Select(x =>
             {
-                var received = x.receivedAmount < 0 ? 0m : (x.receivedAmount > x.totalAmount ? x.totalAmount : x.receivedAmount);
+                var received = x.receivedAmount;
+                if (received < 0m) received = 0m;
+
                 var remaining = x.totalAmount - received;
+                if (remaining < 0m) remaining = 0m;
+
+                var carryCredit = x.carryForwardBalance < 0m ? Math.Abs(x.carryForwardBalance) : 0m;
+                var resolvedIsReceived = received >= x.totalAmount || x.totalAmount == 0m;
 
                 string? periodText = null;
 
@@ -138,10 +124,11 @@ namespace IdeioMuhasebe.Controllers
                     totalAmount = x.totalAmount,
                     receivedAmount = received,
                     remainingAmount = remaining,
+                    carryForwardCredit = carryCredit,
                     x.dueDate,
                     x.incomeType,
                     x.incomeTypeId,
-                    x.isReceived,
+                    isReceived = resolvedIsReceived,
                     recurringPeriodText = periodText
                 };
             }).ToList();
@@ -149,14 +136,14 @@ namespace IdeioMuhasebe.Controllers
             return Json(new
             {
                 ok = true,
-                unpaid = list.Where(x => !x.isReceived).ToList(),
-                paid = list.Where(x => x.isReceived).ToList()
+                unpaid = list.Where(x => x.remainingAmount > 0m).ToList(),
+                paid = list.Where(x => x.remainingAmount <= 0m).ToList()
             });
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SetReceived([FromBody] IdeioMuhasebe.Models.SetReceivedVm vm)
+        public async Task<IActionResult> SetReceived([FromBody] SetReceivedVm vm)
         {
             if (vm == null || vm.Id <= 0)
                 return BadRequest(new { ok = false, message = "Geçersiz istek." });
@@ -165,28 +152,42 @@ namespace IdeioMuhasebe.Controllers
             if (ent == null)
                 return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
-            if (vm.IsReceived)
-            {
-                ent.IsReceived = true;
-                ent.ReceivedAmount = ent.Amount;
-            }
-            else
-            {
-                ent.IsReceived = false;
+            var currentReceived = ent.ReceivedAmount;
+            if (currentReceived < 0m) currentReceived = 0m;
 
-                if (ent.ReceivedAmount >= ent.Amount)
+            if (vm.IsReceived) // "Tahsil Edilenler" sütununa taşındıysa
+            {
+                // Eğer mevcut tahsilat borç miktarından az ise, tam miktar yap
+                if (currentReceived < ent.Amount)
+                    ent.ReceivedAmount = ent.Amount;
+            }
+            else // "Bekleyenler" sütununa taşındıysa
+            {
+                // Önemli Değişiklik: Eğer tam ödenmişse VEYA fazla ödenmişse sıfırla
+                if (currentReceived >= ent.Amount)
                     ent.ReceivedAmount = 0m;
             }
 
+            // Durum ve bakiye güncellemeleri
+            ent.IsReceived = ent.ReceivedAmount >= ent.Amount;
+            ent.CarryForwardBalance = ent.Amount - ent.ReceivedAmount;
             ent.UpdatedDate = DateTime.Now;
+
             await _db.SaveChangesAsync();
 
-            return Json(new { ok = true });
+            return Json(new
+            {
+                ok = true,
+                receivedAmount = ent.ReceivedAmount,
+                remainingAmount = Math.Max(0m, ent.Amount - ent.ReceivedAmount),
+                carryForwardCredit = ent.CarryForwardBalance < 0m ? Math.Abs(ent.CarryForwardBalance) : 0m,
+                fullyCovered = ent.IsReceived
+            });
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> AddPartialReceive([FromBody] IdeioMuhasebe.Models.PartialAmountVM vm)
+        public async Task<IActionResult> AddPartialReceive([FromBody] PartialAmountVM vm)
         {
             if (vm == null || vm.Id <= 0)
                 return BadRequest(new { ok = false, message = "Geçersiz istek." });
@@ -198,53 +199,28 @@ namespace IdeioMuhasebe.Controllers
             if (ent == null)
                 return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
-            if (ent.IsReceived)
-                return BadRequest(new { ok = false, message = "Bu kayıt zaten tahsil edildi." });
-
-            var currentReceived = ent.ReceivedAmount < 0 ? 0m : ent.ReceivedAmount;
-            if (currentReceived > ent.Amount) currentReceived = ent.Amount;
-
-            var remaining = ent.Amount - currentReceived;
-
-            // ✅ artık clamp yok, fazla girilirse reddet
-            if (vm.Amount > remaining)
-            {
-                return BadRequest(new
-                {
-                    ok = false,
-                    message = $"Gelir tutarından daha büyük bir tahsilat girdiniz. Kalan tutar: {remaining:N2} ₺"
-                });
-            }
+            var currentReceived = ent.ReceivedAmount;
+            if (currentReceived < 0m) currentReceived = 0m;
 
             ent.ReceivedAmount = currentReceived + vm.Amount;
-
-            // ✅ toplam tamamlandıysa otomatik tahsil edildi yap
-            if (ent.ReceivedAmount >= ent.Amount)
-            {
-                ent.ReceivedAmount = ent.Amount;
-                ent.IsReceived = true;
-            }
-            else
-            {
-                ent.IsReceived = false;
-            }
-
+            ent.IsReceived = ent.ReceivedAmount >= ent.Amount;
+            ent.CarryForwardBalance = ent.Amount - ent.ReceivedAmount;
             ent.UpdatedDate = DateTime.Now;
+
             await _db.SaveChangesAsync();
+
+            var received = ent.ReceivedAmount;
+            var remaining = ent.Amount - received;
+            if (remaining < 0m) remaining = 0m;
 
             return Json(new
             {
                 ok = true,
-                receivedAmount = ent.ReceivedAmount,
-                remainingAmount = ent.Amount - ent.ReceivedAmount,
+                receivedAmount = received,
+                remainingAmount = remaining,
+                carryForwardCredit = ent.CarryForwardBalance < 0m ? Math.Abs(ent.CarryForwardBalance) : 0m,
                 fullyCovered = ent.IsReceived
             });
-        }
-
-        public class SetReceivedVm
-        {
-            public int Id { get; set; }
-            public bool IsReceived { get; set; }
         }
     }
 }

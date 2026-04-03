@@ -33,9 +33,13 @@ namespace IdeioMuhasebe.Controllers
         private static (DateTime from, DateTime toExclusive) Range(DateTime? from, DateTime? to)
         {
             if (from == null || to == null) return DefaultMonthRange();
+
             var f = from.Value.Date;
             var t = to.Value.Date;
-            if (t < f) (f, t) = (t, f);
+
+            if (t < f)
+                (f, t) = (t, f);
+
             return (f, t.AddDays(1));
         }
 
@@ -56,7 +60,7 @@ namespace IdeioMuhasebe.Controllers
             var q = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
                 .Include(x => x.RecurringDebt)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && x.IsDeleted==false);
 
             if (debtTypeId.HasValue && debtTypeId.Value > 0)
                 q = q.Where(x => x.DebtTypeId == debtTypeId.Value);
@@ -76,7 +80,7 @@ namespace IdeioMuhasebe.Controllers
                     taxAmount = x.TaxAmount,
                     amount = x.Amount,
 
-                    dueDateDt = x.DueDate, // hesap için
+                    dueDateDt = x.DueDate,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     payee = x.Payee,
                     isPaid = x.IsPaid,
@@ -99,7 +103,7 @@ namespace IdeioMuhasebe.Controllers
                     var startM = MonthStart(x.recurringStartDate.Value);
                     var dueM = MonthStart(x.dueDateDt);
 
-                    var idx = MonthDiff(startM, dueM) + 1; // 1-based
+                    var idx = MonthDiff(startM, dueM) + 1;
                     if (idx < 1) idx = 1;
                     if (idx > x.recurringPeriodCount.Value) idx = x.recurringPeriodCount.Value;
 
@@ -123,8 +127,6 @@ namespace IdeioMuhasebe.Controllers
 
                     x.recurringDebtId,
                     x.recurringPeriodCount,
-
-                    // ✅ frontend bunu gösterecek
                     recurringPeriodText = periodText
                 };
             }).ToList();
@@ -159,9 +161,10 @@ namespace IdeioMuhasebe.Controllers
             var total = net + tax;
             if (total <= 0) return BadRequest(new { ok = false, message = "Net + Vergi toplamı 0'dan büyük olmalı." });
 
-            int? periodCount = (vm.PeriodCount.HasValue && vm.PeriodCount.Value > 0) ? vm.PeriodCount.Value : (int?)null;
+            int? periodCount = (vm.PeriodCount.HasValue && vm.PeriodCount.Value > 0)
+                ? vm.PeriodCount.Value
+                : (int?)null;
 
-            // CREATE
             if (vm.Id == 0)
             {
                 int? recurringId = null;
@@ -194,12 +197,14 @@ namespace IdeioMuhasebe.Controllers
                             IsActive = true,
                             UpdatedDate = DateTime.Now
                         };
+
                         _db.RecurringDebts.Add(rule);
                         await _db.SaveChangesAsync();
                     }
                     else
                     {
-                        if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
+                        if (vm.DueDate.Date < rule.StartDate.Date)
+                            rule.StartDate = vm.DueDate.Date;
 
                         rule.NetAmount = net;
                         rule.TaxAmount = tax;
@@ -216,6 +221,8 @@ namespace IdeioMuhasebe.Controllers
                     recurringId = rule.Id;
                 }
 
+                var firstPaid = vm.IsPaid ? total : 0m;
+
                 var ent = new Debt
                 {
                     DebtTypeId = vm.DebtTypeId,
@@ -223,10 +230,8 @@ namespace IdeioMuhasebe.Controllers
                     NetAmount = net,
                     TaxAmount = tax,
                     Amount = total,
-
-                    // ✅ ilk oluştururken checkbox işaretliyse tam ödenmiş başlat
-                    PaidAmount = vm.IsPaid ? total : 0m,
-
+                    PaidAmount = firstPaid,
+                    CarryForwardBalance = total - firstPaid,
                     DueDate = vm.DueDate.Date,
                     Payee = payee,
                     IsPaid = vm.IsPaid,
@@ -237,17 +242,21 @@ namespace IdeioMuhasebe.Controllers
                 _db.Debts.Add(ent);
                 await _db.SaveChangesAsync();
 
-                if (recurringId.HasValue)
+                if (vm.IsRecurring)
                     await _recurring.EnsureGeneratedAsync(DateTime.Today);
 
                 return Json(new { ok = true, id = ent.Id });
             }
 
-            // UPDATE
-            var existing = await _db.Debts.FirstOrDefaultAsync(x => x.Id == vm.Id);
-            if (existing == null) return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+            var existing = await _db.Debts.FirstOrDefaultAsync(x => x.Id == vm.Id && !x.IsDeleted);
+            if (existing == null)
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
             var oldWasPaid = existing.IsPaid;
+            var oldAmount = existing.Amount;
+
+            var currentPaid = existing.PaidAmount ?? 0m;
+            if (currentPaid < 0m) currentPaid = 0m;
 
             existing.DebtTypeId = vm.DebtTypeId;
             existing.Name = name;
@@ -258,27 +267,23 @@ namespace IdeioMuhasebe.Controllers
             existing.Payee = payee;
             existing.UpdatedDate = DateTime.Now;
 
-            // ✅ kısmi ödeme varsa koru
             if (vm.IsPaid)
             {
-                existing.PaidAmount = total;
-                existing.IsPaid = true;
+                if (currentPaid < total)
+                    currentPaid = total;
             }
             else
             {
-                if (oldWasPaid)
-                {
-                    // formdan "ödendi" kaldırıldıysa ve daha önce fully paid ise sıfırla
-                    existing.PaidAmount = 0m;
-                }
-
-                if (existing.PaidAmount > total)
-                    existing.PaidAmount = total;
-
-                existing.IsPaid = false;
+                // sadece checkbox ile tam ödendi yapılmış kayıt geri açılıyorsa sıfırla
+                // fazla ödeme varsa koru
+                if (oldWasPaid && currentPaid == oldAmount)
+                    currentPaid = 0m;
             }
 
-            // recurring kapandıysa
+            existing.PaidAmount = currentPaid;
+            existing.IsPaid = currentPaid >= total;
+            existing.CarryForwardBalance = total - currentPaid;
+
             if (!vm.IsRecurring)
             {
                 existing.RecurringDebtId = null;
@@ -286,10 +291,9 @@ namespace IdeioMuhasebe.Controllers
                 return Json(new { ok = true });
             }
 
-            // recurring açık: oluştur/güncelle
             {
                 var day = vm.DueDate.Day;
-                RecurringDebt rule = null;
+                RecurringDebt? rule = null;
 
                 if (existing.RecurringDebtId.HasValue)
                     rule = await _db.RecurringDebts.FirstOrDefaultAsync(r => r.Id == existing.RecurringDebtId.Value);
@@ -333,7 +337,10 @@ namespace IdeioMuhasebe.Controllers
                 rule.Amount = total;
                 rule.Payee = payee;
                 rule.DayOfMonth = day;
-                if (vm.DueDate.Date < rule.StartDate.Date) rule.StartDate = vm.DueDate.Date;
+
+                if (vm.DueDate.Date < rule.StartDate.Date)
+                    rule.StartDate = vm.DueDate.Date;
+
                 rule.PeriodCount = periodCount;
                 rule.IsActive = true;
                 rule.UpdatedDate = DateTime.Now;
@@ -351,14 +358,14 @@ namespace IdeioMuhasebe.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete([FromBody] int id)
         {
-            var ent = await _db.Debts.FirstOrDefaultAsync(x => x.Id == id);
+            // YENİ: Zaten silinmiş bir kaydı getirmemesi için && !x.IsDeleted eklendi
+            var ent = await _db.Debts.FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
             if (ent == null)
-                return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
+                return NotFound(new { ok = false, message = "Kayıt bulunamadı veya zaten silinmiş." });
 
             await using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
-                // ✅ Yinelenen kayıtsa: bu ayı skip'le ki tekrar üretilmesin
                 if (ent.RecurringDebtId.HasValue)
                 {
                     var month = new DateTime(ent.DueDate.Year, ent.DueDate.Month, 1);
@@ -369,7 +376,7 @@ namespace IdeioMuhasebe.Controllers
 
                     if (!already)
                     {
-                        _db.RecurringDebtSkips.Add(new IdeioMuhasebe.Entities.RecurringDebtSkip
+                        _db.RecurringDebtSkips.Add(new RecurringDebtSkip
                         {
                             RecurringDebtId = rid,
                             Month = month,
@@ -378,7 +385,11 @@ namespace IdeioMuhasebe.Controllers
                     }
                 }
 
-                _db.Debts.Remove(ent);
+                // ESKİ HALİ: _db.Debts.Remove(ent);
+                // YENİ HALİ: Soft Delete yapıyoruz
+                ent.IsDeleted = true;
+                ent.UpdatedDate = DateTime.Now; // Silinme tarihini/son güncellemeyi tutmak iyi bir pratiktir
+
                 await _db.SaveChangesAsync();
 
                 await tx.CommitAsync();
@@ -387,7 +398,7 @@ namespace IdeioMuhasebe.Controllers
             catch (DbUpdateException)
             {
                 await tx.RollbackAsync();
-                return BadRequest(new { ok = false, message = "Silinemedi (veritabanı kısıtı/ilişki hatası)." });
+                return BadRequest(new { ok = false, message = "Silinemedi (veritabanı işlemi sırasında hata oluştu)." });
             }
             catch (Exception ex)
             {

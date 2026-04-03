@@ -22,16 +22,14 @@ namespace IdeioMuhasebe.Controllers
         }
 
         private static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
+
         private static int MonthDiff(DateTime aMonth, DateTime bMonth)
             => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
 
-        // Dashboard: kartlar + yaklaşan giderler + yaklaşan gelirler (seçili aralığa göre)
         [HttpGet]
         public async Task<IActionResult> Summary(DateTime? from, DateTime? to, int? debtTypeId, int? incomeTypeId)
         {
             var (f, toEx) = Range(from, to);
-
-            decimal Clamp(decimal v, decimal max) => v < 0 ? 0m : (v > max ? max : v);
 
             // ---------------------------------------------------------
             // EXPENSES (Debts)
@@ -54,22 +52,20 @@ namespace IdeioMuhasebe.Controllers
                     x.DueDate,
                     debtType = x.DebtType.Name,
                     debtTypeId = x.DebtTypeId,
-                    x.IsPaid,
                     recurringDebtId = x.RecurringDebtId,
                     recurringStartDate = x.RecurringDebt != null ? (DateTime?)x.RecurringDebt.StartDate : null,
                     recurringPeriodCount = x.RecurringDebt != null ? x.RecurringDebt.PeriodCount : null
                 })
                 .ToListAsync();
 
+            // Hesaplamalar doğrudan PaidAmount üzerinden yapılıyor
             var debtTotal = expRawAll.Sum(x => x.Amount);
-            var debtPaid = expRawAll.Sum(x => Clamp(x.PaidAmount ?? 0, x.Amount));
-
-            var debtUnpaid = expRawAll.Sum(x => (x.Amount) - Clamp(x.PaidAmount ?? 0, x.Amount));
+            var debtPaid = expRawAll.Sum(x => x.PaidAmount ?? 0m);
+            var debtUnpaid = expRawAll.Sum(x => x.Amount - (x.PaidAmount ?? 0m));
 
             var expRaw = expRawAll
-                .Where(x => !x.IsPaid)
                 .OrderBy(x => x.DueDate)
-                .Take(50)
+                .ThenBy(x => x.Name)
                 .ToList();
 
             // ---------------------------------------------------------
@@ -94,23 +90,26 @@ namespace IdeioMuhasebe.Controllers
                     x.DueDate,
                     incomeType = x.IncomeType.Name,
                     incomeTypeId = x.IncomeTypeId,
-                    x.IsReceived,
                     recurringIncomeId = x.RecurringIncomeId,
                     recurringStartDate = x.RecurringIncome != null ? (DateTime?)x.RecurringIncome.StartDate : null,
                     recurringPeriodCount = x.RecurringIncome != null ? x.RecurringIncome.PeriodCount : null
                 })
                 .ToListAsync();
 
+            // Hesaplamalar doğrudan ReceivedAmount üzerinden yapılıyor
             var incTotal = incRawAll.Sum(x => x.Amount);
-            var incReceived = incRawAll.Sum(x => Clamp(x.ReceivedAmount, x.Amount));
-            var incRemaining = incRawAll.Sum(x => x.Amount - Clamp(x.ReceivedAmount, x.Amount));
+            var incReceived = incRawAll.Sum(x => x.ReceivedAmount);
+            var incRemaining = incRawAll.Sum(x => x.Amount - x.ReceivedAmount);
 
-            // Gelir vergisi gider sayılacak ama kısmi tahsilata göre oranlanacak
+            // ✅ DÜZELTME BURADA: Fazla ödeme durumunda verginin de aynı oranda artması için oran kısıtlamasını (ratio > 1m) kaldırdık.
             decimal IncomeTaxReceived(dynamic x)
             {
-                var received = Clamp((decimal)x.ReceivedAmount, (decimal)x.Amount);
+                var received = (decimal)x.ReceivedAmount;
                 if (x.Amount <= 0) return 0m;
-                return x.TaxAmount * (received / x.Amount);
+
+                var ratio = received / x.Amount;
+
+                return x.TaxAmount * ratio;
             }
 
             decimal IncomeTaxRemaining(dynamic x) => x.TaxAmount - IncomeTaxReceived(x);
@@ -120,17 +119,9 @@ namespace IdeioMuhasebe.Controllers
             var incTaxRemaining = incRawAll.Sum(x => IncomeTaxRemaining(x));
 
             var incRaw = incRawAll
-                .Where(x => !x.IsReceived)
                 .OrderBy(x => x.DueDate)
-                .Take(50)
+                .ThenBy(x => x.Name)
                 .ToList();
-
-            // ---------------------------------------------------------
-            // recurring period text
-            // ---------------------------------------------------------
-            static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
-            static int MonthDiff(DateTime aMonth, DateTime bMonth)
-                => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
 
             var upcomingExpenses = expRaw.Select(x =>
             {
@@ -151,8 +142,9 @@ namespace IdeioMuhasebe.Controllers
                     periodText = $"{idx}/{x.recurringPeriodCount.Value}";
                 }
 
-                var paid = Clamp(x.PaidAmount ?? 0, x.Amount);
+                var paid = x.PaidAmount ?? 0m;
                 var remaining = x.Amount - paid;
+                var isPaid = remaining <= 0; // Kalan bakiye 0 veya altındaysa ödendi sayılır
 
                 return new
                 {
@@ -165,7 +157,9 @@ namespace IdeioMuhasebe.Controllers
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     x.debtType,
                     x.debtTypeId,
-                    x.IsPaid,
+                    isPaid,
+                    paymentStatus = isPaid ? "paid" : "unpaid",
+                    paymentStatusText = isPaid ? "Ödendi" : "Ödenmedi",
                     recurringPeriodText = periodText
                 };
             }).ToList();
@@ -189,8 +183,9 @@ namespace IdeioMuhasebe.Controllers
                     periodText = $"{idx}/{x.recurringPeriodCount.Value}";
                 }
 
-                var received = Clamp(x.ReceivedAmount, x.Amount);
+                var received = x.ReceivedAmount;
                 var remaining = x.Amount - received;
+                var isPaid = remaining <= 0; // Kalan bakiye 0 veya altındaysa tahsil edildi sayılır
 
                 return new
                 {
@@ -203,7 +198,9 @@ namespace IdeioMuhasebe.Controllers
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     x.incomeType,
                     x.incomeTypeId,
-                    x.IsReceived,
+                    isPaid,
+                    paymentStatus = isPaid ? "paid" : "unpaid",
+                    paymentStatusText = isPaid ? "Ödendi" : "Ödenmedi",
                     recurringPeriodText = periodText
                 };
             }).ToList();
@@ -211,7 +208,6 @@ namespace IdeioMuhasebe.Controllers
             // ---------------------------------------------------------
             // HOME KARTLARI
             // gider = borç toplamı + gelir vergisi
-            // ama paid/remaining kısmi mantıkla
             // ---------------------------------------------------------
             var expTotal = debtTotal + incTaxTotal;
             var expPaid = debtPaid + incTaxReceived;

@@ -14,24 +14,11 @@
         border: 1px solid rgba(255,255,255,.08);
         box-shadow: 0 12px 28px rgba(0,0,0,.28);
     }
-</style>
-<style>
-    .category-popover {
-        position: fixed !important;
-        z-index: 1080 !important;
-        width: 300px;
-        background: var(--bs-body-bg) !important;
-        opacity: 1 !important;
-        backdrop-filter: none !important;
-        -webkit-backdrop-filter: none !important;
-        border: 1px solid rgba(255,255,255,.08);
-        box-shadow: 0 12px 28px rgba(0,0,0,.28);
-    }
 
     .upcoming-table-wrap {
         max-height: 520px;
         overflow-y: auto;
-        overflow-x: auto;
+        overflow-x: hidden;
     }
 
         .upcoming-table-wrap thead th {
@@ -39,20 +26,188 @@
             top: 0;
             z-index: 2;
             background: var(--bs-body-bg);
+            vertical-align: middle;
         }
 
-    @@media (max-width: 991.98px) {
-        .upcoming-table-wrap {
-            max-height: 380px;
-        }
+    .table-dashboard {
+        width: 100%;
+        margin-bottom: 0;
     }
+
+        .table-dashboard th,
+        .table-dashboard td {
+            vertical-align: middle;
+        }
+
+        .table-dashboard .cell-title {
+            display: block;
+            line-height: 1.3;
+        }
+
+        .table-dashboard .cell-meta {
+            display: block;
+            line-height: 1.2;
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .table-dashboard .table-category-cell,
+        .table-dashboard .table-name-cell {
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .table-dashboard .table-date-cell,
+        .table-dashboard .table-status-cell,
+        .table-dashboard .table-due-cell,
+        .table-dashboard .table-money-cell > .cell-title,
+        .table-dashboard .status-badge-wrap,
+        .table-dashboard .table-due-cell .badge {
+            white-space: nowrap;
+            word-break: keep-all;
+        }
+
+        .table-dashboard .table-date-cell,
+        .table-dashboard .table-money-cell,
+        .table-dashboard .table-due-cell {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .table-dashboard .table-name-cell .badge {
+            margin-top: .35rem;
+        }
+
+        .table-dashboard .status-badge-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            flex-wrap: nowrap;
+            gap: .35rem;
+        }
+
+        .table-dashboard .form-select.form-select-sm {
+            min-width: 0;
+            width: 100%;
+        }
+
+        .table-dashboard .btn.btn-link {
+            white-space: normal;
+            line-height: 1.2;
+            text-align: left;
+        }
+
+    @@media (max-width: 991.98px) and (min-width: 768px) {
+        .upcoming-table-wrap {
+            max-height: 420px;
+            overflow-x: hidden;
+        }
+
+        .table-dashboard {
+            table-layout: fixed;
+        }
+
+            .table-dashboard th,
+            .table-dashboard td {
+                padding: .6rem .45rem;
+                font-size: .82rem;
+            }
+
+            .table-dashboard thead th {
+                font-size: .72rem;
+            }
+
+            .table-dashboard th:nth-child(1),
+            .table-dashboard td:nth-child(1) {
+                width: 54px;
+            }
+
+            .table-dashboard th:nth-child(2),
+            .table-dashboard td:nth-child(2) {
+                width: 92px;
+            }
+
+            .table-dashboard th:nth-child(3),
+            .table-dashboard td:nth-child(3) {
+                width: 96px;
+            }
+
+            .table-dashboard th:nth-child(4),
+            .table-dashboard td:nth-child(4) {
+                width: auto;
+            }
+
+            .table-dashboard th:nth-child(5),
+            .table-dashboard td:nth-child(5) {
+                width: 132px;
+            }
+
+            .table-dashboard th:nth-child(6),
+            .table-dashboard td:nth-child(6) {
+                width: 118px;
+            }
+
+            .table-dashboard th:nth-child(7),
+            .table-dashboard td:nth-child(7) {
+                width: 116px;
+            }
+
+            .table-dashboard .table-money-cell .cell-meta {
+                font-size: .68rem;
+                line-height: 1.15;
+                margin-top: 2px;
+            }
+
+            .table-dashboard .table-date-cell,
+            .table-dashboard .table-status-cell,
+            .table-dashboard .table-due-cell {
+                font-size: .78rem;
+            }
+
+                .table-dashboard .table-due-cell .badge,
+                .table-dashboard .table-status-cell .badge {
+                    font-size: .68rem;
+                    padding: .38rem .45rem;
+                }
+    }
+
+    @@media (max-width: 767.98px) {
+        .upcoming-table-wrap {
+            overflow-x: auto;
+        }
+
+        .table-dashboard {
+            min-width: 780px;
+            table-layout: auto;
+        }
+
+            .table-dashboard th,
+            .table-dashboard td {
+                white-space: nowrap;
+            }
+
+            .table-dashboard .table-name-cell,
+            .table-dashboard .table-category-cell,
+            .table-dashboard .cell-meta {
+                white-space: normal;
+            }
+    }
+    .no-pay
+ {
+    border-color: #dc3545 !important;
+    background-color: #dc3545 !important;
+    color: #fff !important;
+}
 </style>
+
 <div class="card card-soft mb-3">
     <div class="card-body d-flex flex-wrap gap-2 align-items-end">
         <div>
             <label class="form-label small text-muted">Başlangıç</label>
             <input type="date" class="form-control" id="fromDate">
         </div>
+
         <div>
             <label class="form-label small text-muted">Bitiş</label>
             <input type="date" class="form-control" id="toDate">
@@ -73,7 +228,7 @@
         </button>
     </div>
 </div>
-<!-- GELİR KARTLARI -->
+
 <div class="row g-3 mb-3">
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
@@ -83,6 +238,7 @@
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
             <div class="card-body">
@@ -91,6 +247,7 @@
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
             <div class="card-body">
@@ -100,7 +257,7 @@
         </div>
     </div>
 </div>
-<!-- GİDER KARTLARI -->
+
 <div class="row g-3 mb-3">
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
@@ -110,6 +267,7 @@
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
             <div class="card-body">
@@ -118,6 +276,7 @@
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
             <div class="card-body">
@@ -128,9 +287,6 @@
     </div>
 </div>
 
-
-
-<!-- SEÇİLENLER -->
 <div class="row g-3 mb-3 d-none" id="selectedCardsRow">
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
@@ -140,6 +296,7 @@
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
             <div class="card-body">
@@ -148,6 +305,7 @@
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-4">
         <div class="card card-soft">
             <div class="card-body">
@@ -158,17 +316,15 @@
     </div>
 </div>
 
-<!-- Yaklaşanlar -->
 <div class="row g-3">
     <div class="col-12 col-lg-6">
         <div class="card card-soft">
             <div class="card-body position-relative">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="fw-semibold">Yaklaşan Giderler</div>
+                    <div class="fw-semibold">Seçili Döneme Ait Giderler</div>
                     <div class="text-muted small"><span id="expCount">0</span> kayıt</div>
                 </div>
 
-                <!-- Gider kategori popup -->
                 <div class="card shadow-sm d-none category-popover" id="expCatPanel">
                     <div class="card-body p-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -185,8 +341,8 @@
                     </div>
                 </div>
 
-                <div class="table-responsive upcoming-table-wrap">
-                    <table class="table align-middle mb-0">
+                <div class="upcoming-table-wrap">
+                    <table class="table table-dashboard align-middle mb-0">
                         <thead>
                             <tr class="text-muted small">
                                 <th style="width:70px">
@@ -204,6 +360,14 @@
                                     </button>
                                 </th>
                                 <th>Gider</th>
+                                <th>
+                                    <div class="small mb-1">Ödeme Durumu</div>
+                                    <select class="form-select form-select-sm" id="expStatusFilter">
+                                        <option value="all" selected>Tümü</option>
+                                        <option value="paid">Ödendi</option>
+                                        <option value="unpaid">Ödenmedi</option>
+                                    </select>
+                                </th>
                                 <th class="text-end">Tutar</th>
                                 <th class="text-end">Kalan</th>
                             </tr>
@@ -219,11 +383,10 @@
         <div class="card card-soft">
             <div class="card-body position-relative">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="fw-semibold">Yaklaşan Gelirler</div>
+                    <div class="fw-semibold">Seçili Döneme Ait Gelirler</div>
                     <div class="text-muted small"><span id="incCount">0</span> kayıt</div>
                 </div>
 
-                <!-- Gelir kategori popup -->
                 <div class="card shadow-sm d-none category-popover" id="incCatPanel">
                     <div class="card-body p-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -240,8 +403,8 @@
                     </div>
                 </div>
 
-                <div class="table-responsive upcoming-table-wrap">
-                    <table class="table align-middle mb-0">
+                <div class="upcoming-table-wrap">
+                    <table class="table table-dashboard align-middle mb-0">
                         <thead>
                             <tr class="text-muted small">
                                 <th style="width:70px">
@@ -255,11 +418,18 @@
                                     <button type="button"
                                             class="btn btn-link p-0 text-decoration-none link-secondary small"
                                             id="incCatToggle" style="color:#e5e7ebbf !important;">
-                                          
                                         Kategori
                                     </button>
                                 </th>
                                 <th>Gelir</th>
+                                <th>
+                                    <div class="small mb-1">Ödeme Durumu</div>
+                                    <select class="form-select form-select-sm" id="incStatusFilter">
+                                        <option value="all" selected>Tümü</option>
+                                        <option value="paid">Ödendi</option>
+                                        <option value="unpaid">Ödenmedi</option>
+                                    </select>
+                                </th>
                                 <th class="text-end">Tutar</th>
                                 <th class="text-end">Kalan</th>
                             </tr>

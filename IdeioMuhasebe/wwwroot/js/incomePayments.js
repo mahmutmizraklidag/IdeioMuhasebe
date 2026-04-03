@@ -37,26 +37,31 @@
         const dateText = app.formatDateTr(x.dueDate);
 
         const badgeHtml = isPaidList
-            ? `<span class="badge bg-success">Tahsil Edildi</span>`
-            : app.dueBadgeHtml(x.dueDate, false);
+   ? `<span class="badge bg-success">Tahsil Edildi</span>`
+   : app.dueBadgeHtml(x.dueDate, false);
 
         const periodBadge = x.recurringPeriodText
-            ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
-            : "";
+   ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
+   : "";
 
         const remaining = Number(x.remainingAmount ?? x.amount ?? 0);
         const total = Number(x.totalAmount ?? x.amount ?? 0);
         const received = Number(x.receivedAmount ?? 0);
+        const overreceived = Number(x.overreceivedAmount ?? 0);
 
-        const partialBtn = !isPaidList
-            ? `<button type="button"
+        const partialBtn = `<button type="button"
                  class="btn btn-sm btn-light partial-receive-btn"
                  data-id="${x.id}"
                  data-remaining="${remaining}"
-                 title="Kısmi tahsilat gir">
+                 data-total="${total}"
+                 data-received="${received}"
+                 title="Tahsilat ekle">
             <i class="bi bi-pencil"></i>
-         </button>`
-            : "";
+         </button>`;
+
+        const carryInfo = overreceived > 0
+   ? `<div class="small text-success mt-1">Devreden fazla tahsilat: ${app.money(overreceived)}</div>`
+   : "";
 
         return `
       <div class="kanban-card" data-id="${x.id}" data-due="${x.dueDate}">
@@ -78,6 +83,8 @@
           Toplam: ${app.money(total)} · Tahsil Edilen: ${app.money(received)}
         </div>
 
+        ${carryInfo}
+
         <div class="due-badge mt-1">${badgeHtml}</div>
       </div>
     `;
@@ -85,10 +92,10 @@
 
     const load = async () => {
         const data = await app.get("/IncomePayments/List", {
-            from: from.value,
-            to: to.value,
-            incomeTypeId: typeFilter.value
-        });
+       from: from.value,
+       to: to.value,
+       incomeTypeId: typeFilter.value
+   });
 
         colUnpaid.innerHTML = data.unpaid.map(x => cardHtml(x, false)).join("");
         colPaid.innerHTML = data.paid.map(x => cardHtml(x, true)).join("");
@@ -96,16 +103,16 @@
 
     const setReceived = async (id, isReceived) => {
         await app.postJson("/IncomePayments/SetReceived", {
-            id: Number(id),
-            isReceived: !!isReceived
-        });
+       id: Number(id),
+       isReceived: !!isReceived
+   });
     };
 
     const addPartialReceive = async (id, amount) => {
         await app.postJson("/IncomePayments/AddPartialReceive", {
-            id: Number(id),
-            amount: Number(amount)
-        });
+       id: Number(id),
+       amount: Number(amount)
+   });
     };
 
     const updateBadge = (item, isPaidTarget) => {
@@ -114,36 +121,41 @@
         if (!box) return;
 
         box.innerHTML = isPaidTarget
-            ? `<span class="badge bg-success">Tahsil Edildi</span>`
-            : app.dueBadgeHtml(due, false);
+   ? `<span class="badge bg-success">Tahsil Edildi</span>`
+   : app.dueBadgeHtml(due, false);
     };
 
     const mkSortable = (el, isPaidTarget) => new Sortable(el, {
-        group: "incomepay",
-        animation: 160,
-        onAdd: async (evt) => {
-            const item = evt.item;
-            const id = item.dataset.id;
+       group: "incomepay",
+       animation: 160,
+       onAdd: async (evt) => {
+           const item = evt.item;
+           const id = item.dataset.id;
 
-            try {
-                await setReceived(id, isPaidTarget);
-                updateBadge(item, isPaidTarget);
-                await load();
-            } catch (e) {
-                alert(e?.message || "Güncellenemedi");
-                await load();
-            }
-        }
-    });
+           try {
+               await setReceived(id, isPaidTarget);
+               updateBadge(item, isPaidTarget);
+               await load();
+           } catch (e) {
+               alert(e?.message || "Güncellenemedi");
+               await load();
+           }
+       }
+   });
 
-    colUnpaid.addEventListener("click", async (e) => {
+    const onPartialReceiveClick = async (e) => {
         const btn = e.target.closest(".partial-receive-btn");
         if (!btn) return;
 
         const id = Number(btn.dataset.id);
         const remaining = Number(btn.dataset.remaining || 0);
+        const total = Number(btn.dataset.total || 0);
+        const received = Number(btn.dataset.received || 0);
 
-        const raw = prompt(`Kısmi tahsilat tutarı giriniz.\nKalan: ${app.money(remaining)}`);
+        const raw = prompt(
+       `Eklenecek tahsilat tutarı giriniz.\nToplam: ${app.money(total)}\nŞu an tahsil edilen: ${app.money(received)}\nKalan: ${app.money(remaining)}`
+   );
+
         if (raw === null) return;
 
         const amount = Number(String(raw).replace(",", "."));
@@ -153,18 +165,16 @@
             return;
         }
 
-        if (amount > remaining) {
-            alert(`Gelir tutarından daha büyük bir tahsilat girdiniz. Kalan tutar: ${app.money(remaining)}`);
-            return;
-        }
-
         try {
             await addPartialReceive(id, amount);
             await load();
         } catch (err) {
-            alert(err?.message || "Kısmi tahsilat kaydedilemedi.");
+            alert(err?.message || "Tahsilat kaydedilemedi.");
         }
-    });
+    };
+
+    colUnpaid.addEventListener("click", onPartialReceiveClick);
+    colPaid.addEventListener("click", onPartialReceiveClick);
 
     btn.addEventListener("click", load);
     typeFilter.addEventListener("change", load);

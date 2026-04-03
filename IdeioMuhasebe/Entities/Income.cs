@@ -28,6 +28,8 @@ namespace IdeioMuhasebe.Entities
         // ✅ YENİ: Vergi
         [Column(TypeName = "decimal(18,2)")]
         public decimal ReceivedAmount { get; set; }
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal CarryForwardBalance { get; set; } = 0m;
         [Required]
         [DataType(DataType.Date)]
         [Display(Name = "Tahsil Tarihi")]
@@ -41,7 +43,7 @@ namespace IdeioMuhasebe.Entities
 
         [Display(Name = "Son Güncelleme")]
         public DateTime? UpdatedDate { get; set; }
-
+        public bool IsDeleted { get; set; } = false;
         public int IncomeTypeId { get; set; }
         public IncomeType IncomeType { get; set; }
 

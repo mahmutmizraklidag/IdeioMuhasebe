@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using IdeioMuhasebe.Data;
+using IdeioMuhasebe.Models;
 using IdeioMuhasebe.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,26 +31,22 @@ namespace IdeioMuhasebe.Controllers
 
         private static (DateTime from, DateTime toExclusive) Range(DateTime? from, DateTime? to)
         {
-            if (from == null || to == null) return DefaultMonthRange();
+            if (from == null || to == null)
+                return DefaultMonthRange();
 
             var f = from.Value.Date;
             var t = to.Value.Date;
-            if (t < f) (f, t) = (t, f);
+
+            if (t < f)
+                (f, t) = (t, f);
+
             return (f, t.AddDays(1));
         }
 
         private static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
+
         private static int MonthDiff(DateTime aMonth, DateTime bMonth)
             => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
-
-        private static bool LastOnePeriodWarning(DateTime dueDate, DateTime startDate, int periodCount)
-        {
-            if (periodCount <= 0) return false;
-            var startMonth = MonthStart(startDate);
-            var endMonth = startMonth.AddMonths(periodCount - 1);
-            var dueMonth = MonthStart(dueDate);
-            return MonthDiff(dueMonth, endMonth) == 1;
-        }
 
         [HttpGet]
         public IActionResult Index() => View();
@@ -57,34 +54,9 @@ namespace IdeioMuhasebe.Controllers
         [HttpGet]
         public async Task<IActionResult> List(DateTime? from, DateTime? to, int? debtTypeId)
         {
-            var now = DateTime.Today;
-            var defaultFrom = new DateTime(now.Year, now.Month, 1);
-            var defaultToEx = defaultFrom.AddMonths(1);
+            await _recurring.EnsureGeneratedAsync(DateTime.Today);
 
-            DateTime f, toEx;
-            if (from == null || to == null)
-            {
-                f = defaultFrom;
-                toEx = defaultToEx;
-            }
-            else
-            {
-                f = from.Value.Date;
-                var t = to.Value.Date;
-                if (t < f) (f, t) = (t, f);
-                toEx = t.AddDays(1);
-            }
-
-            static DateTime MonthStart(DateTime d) => new DateTime(d.Year, d.Month, 1);
-            static int MonthDiff(DateTime aMonth, DateTime bMonth)
-                => (bMonth.Year - aMonth.Year) * 12 + (bMonth.Month - aMonth.Month);
-
-            static decimal Clamp(decimal value, decimal max)
-            {
-                if (value < 0) return 0m;
-                if (value > max) return max;
-                return value;
-            }
+            var (f, toEx) = Range(from, to);
 
             var q = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
@@ -103,6 +75,7 @@ namespace IdeioMuhasebe.Controllers
                     name = x.Name,
                     totalAmount = x.Amount,
                     paidAmount = x.PaidAmount,
+                    carryForwardBalance = x.CarryForwardBalance,
                     dueDateDt = x.DueDate,
                     dueDate = x.DueDate.ToString("yyyy-MM-dd"),
                     debtType = x.DebtType.Name,
@@ -117,8 +90,14 @@ namespace IdeioMuhasebe.Controllers
 
             var list = raw.Select(x =>
             {
-                var paid = Clamp(x.paidAmount ?? 0, x.totalAmount);
+                var paid = x.paidAmount ?? 0m;
+                if (paid < 0m) paid = 0m;
+
                 var remaining = x.totalAmount - paid;
+                if (remaining < 0m) remaining = 0m;
+
+                var carryCredit = x.carryForwardBalance < 0m ? Math.Abs(x.carryForwardBalance) : 0m;
+                var resolvedIsPaid = paid >= x.totalAmount || x.totalAmount == 0m;
 
                 string? periodText = null;
 
@@ -145,10 +124,11 @@ namespace IdeioMuhasebe.Controllers
                     totalAmount = x.totalAmount,
                     paidAmount = paid,
                     remainingAmount = remaining,
+                    carryForwardCredit = carryCredit,
                     x.dueDate,
                     x.debtType,
                     x.debtTypeId,
-                    x.isPaid,
+                    isPaid = resolvedIsPaid,
                     recurringPeriodText = periodText
                 };
             }).ToList();
@@ -156,14 +136,14 @@ namespace IdeioMuhasebe.Controllers
             return Json(new
             {
                 ok = true,
-                unpaid = list.Where(x => !x.isPaid).ToList(),
-                paid = list.Where(x => x.isPaid).ToList()
+                unpaid = list.Where(x => x.remainingAmount > 0m).ToList(),
+                paid = list.Where(x => x.remainingAmount <= 0m).ToList()
             });
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SetPaid([FromBody] IdeioMuhasebe.Models.SetPaidVm vm)
+        public async Task<IActionResult> SetPaid([FromBody] SetPaidVm vm)
         {
             if (vm == null || vm.Id <= 0)
                 return BadRequest(new { ok = false, message = "Geçersiz istek." });
@@ -172,29 +152,45 @@ namespace IdeioMuhasebe.Controllers
             if (ent == null)
                 return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
+            var currentPaid = ent.PaidAmount ?? 0m;
+
             if (vm.IsPaid)
             {
-                ent.IsPaid = true;
-                ent.PaidAmount = ent.Amount;
+                // Ödendiye çekildiğinde: Eğer borçtan az ödenmişse, borç miktarına tamamla
+                if (currentPaid < ent.Amount)
+                    ent.PaidAmount = ent.Amount;
             }
             else
             {
-                ent.IsPaid = false;
-
-                // sadece fully-paid kolondan geri çekildiyse sıfırla
-                if (ent.PaidAmount >= ent.Amount)
+                // Ödenmediye çekildiğinde: 
+                // Eğer ödenen miktar borca eşit VEYA borçtan fazlaysa sıfırla (veya borcun altına çek)
+                if (currentPaid >= ent.Amount)
                     ent.PaidAmount = 0m;
+
+                // Not: Eğer fazla ödemeyi korumak ama statüyü "Ödenmedi" yapmak istiyorsanız 
+                // buradaki mantığı iş kuralınıza göre değiştirebilirsiniz. 
+                // Ancak teknik olarak IsPaid'in false olması için PaidAmount < Amount olmalıdır.
             }
 
+            ent.IsPaid = (ent.PaidAmount ?? 0m) >= ent.Amount;
+            ent.CarryForwardBalance = ent.Amount - (ent.PaidAmount ?? 0m);
             ent.UpdatedDate = DateTime.Now;
+
             await _db.SaveChangesAsync();
 
-            return Json(new { ok = true });
+            return Json(new
+            {
+                ok = true,
+                paidAmount = ent.PaidAmount,
+                remainingAmount = Math.Max(0m, ent.Amount - (ent.PaidAmount ?? 0m)),
+                carryForwardCredit = ent.CarryForwardBalance < 0m ? Math.Abs(ent.CarryForwardBalance) : 0m,
+                fullyCovered = ent.IsPaid
+            });
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> AddPartialPayment([FromBody] IdeioMuhasebe.Models.PartialAmountVM vm)
+        public async Task<IActionResult> AddPartialPayment([FromBody] PartialAmountVM vm)
         {
             if (vm == null || vm.Id <= 0)
                 return BadRequest(new { ok = false, message = "Geçersiz istek." });
@@ -206,53 +202,28 @@ namespace IdeioMuhasebe.Controllers
             if (ent == null)
                 return NotFound(new { ok = false, message = "Kayıt bulunamadı." });
 
-            if (ent.IsPaid)
-                return BadRequest(new { ok = false, message = "Bu kayıt zaten ödendi." });
-
-            var currentPaid = ent.PaidAmount < 0 ? 0m : ent.PaidAmount;
-            if (currentPaid > ent.Amount) currentPaid = ent.Amount;
-
-            var remaining = ent.Amount - currentPaid;
-
-            // ✅ artık clamp yok, fazla girilirse reddet
-            if (vm.Amount > remaining)
-            {
-                return BadRequest(new
-                {
-                    ok = false,
-                    message = $"Gider tutarından daha büyük bir ödeme girdiniz. Kalan tutar: {remaining:N2} ₺"
-                });
-            }
+            var currentPaid = ent.PaidAmount ?? 0m;
+            if (currentPaid < 0m) currentPaid = 0m;
 
             ent.PaidAmount = currentPaid + vm.Amount;
-
-            // ✅ toplam tamamlandıysa otomatik ödendi yap
-            if (ent.PaidAmount >= ent.Amount)
-            {
-                ent.PaidAmount = ent.Amount;
-                ent.IsPaid = true;
-            }
-            else
-            {
-                ent.IsPaid = false;
-            }
-
+            ent.IsPaid = ent.PaidAmount >= ent.Amount;
+            ent.CarryForwardBalance = ent.Amount - (ent.PaidAmount ?? 0m);
             ent.UpdatedDate = DateTime.Now;
+
             await _db.SaveChangesAsync();
+
+            var paid = ent.PaidAmount ?? 0m;
+            var remaining = ent.Amount - paid;
+            if (remaining < 0m) remaining = 0m;
 
             return Json(new
             {
                 ok = true,
-                paidAmount = ent.PaidAmount,
-                remainingAmount = ent.Amount - ent.PaidAmount,
+                paidAmount = paid,
+                remainingAmount = remaining,
+                carryForwardCredit = ent.CarryForwardBalance < 0m ? Math.Abs(ent.CarryForwardBalance) : 0m,
                 fullyCovered = ent.IsPaid
             });
-        }
-
-        public class SetPaidVm
-        {
-            public int Id { get; set; }
-            public bool IsPaid { get; set; }
         }
     }
 }

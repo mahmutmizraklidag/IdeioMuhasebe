@@ -14,6 +14,9 @@
     const expSelectAll = document.getElementById("expSelectAll");
     const incSelectAll = document.getElementById("incSelectAll");
 
+    const expStatusFilter = document.getElementById("expStatusFilter");
+    const incStatusFilter = document.getElementById("incStatusFilter");
+
     const cSelExp = document.getElementById("cSelExp");
     const cSelInc = document.getElementById("cSelInc");
     const cSelDiff = document.getElementById("cSelDiff");
@@ -73,6 +76,22 @@
     let baseExpenseRemaining = 0;
     let baseIncomeRemaining = 0;
 
+    const getSignedExpenseRemainingAmount = (x) => {
+        return Number(x.paidAmount || 0) - Number(x.totalAmount || 0);
+    };
+
+    const getSignedIncomeRemainingAmount = (x) => {
+        return Number(x.receivedAmount || 0) - Number(x.totalAmount || 0);
+    };
+
+    const formatSignedMoney = (value) => {
+        const amount = Number(value || 0);
+
+        if (amount > 0) return `+${app.money(amount)}`;
+        if (amount < 0) return `-${app.money(Math.abs(amount))}`;
+        return app.money(0);
+    };
+
     expCatPanel.addEventListener("click", (e) => e.stopPropagation());
     incCatPanel.addEventListener("click", (e) => e.stopPropagation());
 
@@ -127,14 +146,15 @@
 
         const expTotal = expChecks.reduce((sum, x) => sum + Number(x.dataset.amount || 0), 0);
         const incTotal = incChecks.reduce((sum, x) => sum + Number(x.dataset.amount || 0), 0);
-        const diff = incTotal - expTotal;
+
+        const diff = Math.abs(incTotal) - Math.abs(expTotal);
 
         const hasAnySelection = expChecks.length > 0 || incChecks.length > 0;
         selectedCardsRow.classList.toggle("d-none", !hasAnySelection);
 
-        cSelExp.textContent = app.money(expTotal);
-        cSelInc.textContent = app.money(incTotal);
-        cSelDiff.textContent = app.money(diff);
+        cSelExp.textContent = formatSignedMoney(expTotal);
+        cSelInc.textContent = formatSignedMoney(incTotal);
+        cSelDiff.textContent = formatSignedMoney(diff);
 
         cSelDiff.classList.remove("text-success", "text-danger", "text-primary");
         if (diff > 0) cSelDiff.classList.add("text-success");
@@ -229,12 +249,32 @@
         incCatSelectAll.indeterminate = selected > 0 && selected < total;
     };
 
-    const getFilteredExpenses = () => {
+    const getCategoryFilteredExpenses = () => {
         return allUpcomingExpenses.filter(x => selectedExpenseCategoryIds.has(x.debtTypeId));
     };
 
-    const getFilteredIncomes = () => {
+    const getCategoryFilteredIncomes = () => {
         return allUpcomingIncomes.filter(x => selectedIncomeCategoryIds.has(x.incomeTypeId));
+    };
+
+    const getFilteredExpenses = () => {
+        const status = expStatusFilter?.value || "all";
+
+        return getCategoryFilteredExpenses().filter(x => {
+            if (status === "paid") return !!x.isPaid;
+            if (status === "unpaid") return !x.isPaid;
+            return true;
+        });
+    };
+
+    const getFilteredIncomes = () => {
+        const status = incStatusFilter?.value || "all";
+
+        return getCategoryFilteredIncomes().filter(x => {
+            if (status === "paid") return !!x.isPaid;
+            if (status === "unpaid") return !x.isPaid;
+            return true;
+        });
     };
 
     const updateRemainingCardsByCategoryFilter = () => {
@@ -243,14 +283,14 @@
 
         const expenseRemaining = allExpenseSelected
    ? baseExpenseRemaining
-   : getFilteredExpenses().reduce((sum, x) => sum + Number(x.remainingAmount || 0), 0);
+   : getCategoryFilteredExpenses().reduce((sum, x) => sum + getSignedExpenseRemainingAmount(x), 0);
 
         const incomeRemaining = allIncomeSelected
    ? baseIncomeRemaining
-   : getFilteredIncomes().reduce((sum, x) => sum + Number(x.remainingAmount || 0), 0);
+   : getCategoryFilteredIncomes().reduce((sum, x) => sum + getSignedIncomeRemainingAmount(x), 0);
 
-        cExpRemaining.textContent = app.money(expenseRemaining);
-        cIncRemaining.textContent = app.money(incomeRemaining);
+        cExpRemaining.textContent = formatSignedMoney(expenseRemaining);
+        cIncRemaining.textContent = formatSignedMoney(incomeRemaining);
     };
 
     const renderExpenses = () => {
@@ -262,7 +302,7 @@
         if (filtered.length === 0) {
             expBody.innerHTML = `
         <tr>
-          <td colspan="6" class="text-center text-muted py-4">Kayıt bulunamadı.</td>
+          <td colspan="7" class="text-center text-muted py-4">Kayıt bulunamadı.</td>
         </tr>
       `;
             resetSelectCards();
@@ -276,6 +316,14 @@
            ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
            : "";
 
+       const statusBadge = x.isPaid
+           ? `<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="Ödendi">
+                        <i class="bi bi-check-lg"></i>
+                   </span>`
+           : `<span class="badge bg-danger-subtle text-white-emphasis border border-danger-subtle no-pay" title="Ödenmedi">
+                        <i class="bi bi-x-lg"></i>
+                   </span>`;
+
        expBody.insertAdjacentHTML("beforeend", `
         <tr>
           <td>
@@ -283,16 +331,30 @@
               type="checkbox"
               class="form-check-input exp-check"
               data-id="${x.id}"
-              data-amount="${x.remainingAmount}">
+              data-amount="${getSignedExpenseRemainingAmount(x)}">
           </td>
-          <td class="text-muted">${app.formatDateTr(x.dueDate)}</td>
-          <td>${x.debtType}</td>
-          <td class="fw-semibold">${x.name}${periodBadge}</td>
-          <td class="text-end">
-            <div class="fw-semibold">${app.money(x.remainingAmount)}</div>
-            <div class="small text-muted">Toplam: ${app.money(x.totalAmount)} · Ödenen: ${app.money(x.paidAmount)}</div>
+          <td class="text-muted table-date-cell">${app.formatDateTr(x.dueDate)}</td>
+          <td class="table-category-cell">${x.debtType}</td>
+          <td class="fw-semibold table-name-cell">
+            <span class="cell-title">${x.name}</span>
+            ${periodBadge}
           </td>
-          <td class="text-end">${app.dueBadgeHtml(x.dueDate, false)}</td>
+          <td class="table-status-cell">
+            <div class="status-badge-wrap">${statusBadge}</div>
+          </td>
+          <td class="text-end table-money-cell">
+           <div class="fw-semibold cell-title">${app.money(x.totalAmount)}</div>
+
+${x.paidAmount > 0 && x.paidAmount < x.totalAmount 
+                      ? `<div class="small text-muted cell-meta">Ödenen: ${app.money(x.paidAmount)}</div>` 
+                      : ''
+}
+          </td>
+          <td class="text-end table-due-cell">
+            ${x.isPaid
+               ? `<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Ödendi</span>`
+               : app.dueBadgeHtml(x.dueDate, false)}
+          </td>
         </tr>
       `);
    });
@@ -311,7 +373,7 @@
         if (filtered.length === 0) {
             incBody.innerHTML = `
         <tr>
-          <td colspan="6" class="text-center text-muted py-4">Kayıt bulunamadı.</td>
+          <td colspan="7" class="text-center text-muted py-4">Kayıt bulunamadı.</td>
         </tr>
       `;
             resetSelectCards();
@@ -325,6 +387,12 @@
            ? `<span class="badge bg-light text-dark border ms-2">${x.recurringPeriodText}</span>`
            : "";
 
+       const statusBadge = x.isPaid
+           ? `<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="Ödendi"><i class="bi bi-check-lg"></i></span>`
+           : `<span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle no-pay" title="Ödenmedi"><i class="bi bi-x-lg"></i></span>`;
+
+           
+
        incBody.insertAdjacentHTML("beforeend", `
         <tr>
           <td>
@@ -332,16 +400,30 @@
               type="checkbox"
               class="form-check-input inc-check"
               data-id="${x.id}"
-              data-amount="${x.remainingAmount}">
+              data-amount="${getSignedIncomeRemainingAmount(x)}">
           </td>
-          <td class="text-muted">${app.formatDateTr(x.dueDate)}</td>
-          <td>${x.incomeType}</td>
-          <td class="fw-semibold">${x.name}${periodBadge}</td>
-          <td class="text-end">
-            <div class="fw-semibold">${app.money(x.remainingAmount)}</div>
-            <div class="small text-muted">Toplam: ${app.money(x.totalAmount)} · Tahsil Edilen: ${app.money(x.receivedAmount)}</div>
+          <td class="text-muted table-date-cell">${app.formatDateTr(x.dueDate)}</td>
+          <td class="table-category-cell">${x.incomeType}</td>
+          <td class="fw-semibold table-name-cell">
+            <span class="cell-title">${x.name}</span>
+            ${periodBadge}
           </td>
-          <td class="text-end">${app.dueBadgeHtml(x.dueDate, false)}</td>
+          <td class="table-status-cell">
+            <div class="status-badge-wrap">${statusBadge}</div>
+          </td>
+          <td class="text-end table-money-cell">
+           <div class="fw-semibold cell-title">${app.money(x.totalAmount)}</div>
+
+${x.receivedAmount > 0 && x.receivedAmount < x.totalAmount 
+                      ? `<div class="small text-muted cell-meta">Tahsil Edilen: ${app.money(x.receivedAmount)}</div>` 
+                      : ''
+}
+          </td>
+          <td class="text-end table-due-cell">
+            ${x.isPaid
+               ? `<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Ödendi</span>`
+               : app.dueBadgeHtml(x.dueDate, false)}
+          </td>
         </tr>
       `);
    });
@@ -366,14 +448,15 @@
 
         cExpTotal.textContent = app.money(data.cards.expenseTotal);
         cExpPaid.textContent = app.money(data.cards.expensePaid);
-        cExpRemaining.textContent = app.money(data.cards.expenseRemaining);
 
         cIncTotal.textContent = app.money(data.cards.incomeTotal);
         cIncReceived.textContent = app.money(data.cards.incomeReceived);
-        cIncRemaining.textContent = app.money(data.cards.incomeRemaining);
 
-        baseExpenseRemaining = Number(data.cards.expenseRemaining || 0);
-        baseIncomeRemaining = Number(data.cards.incomeRemaining || 0);
+        baseExpenseRemaining = Number(data.cards.expensePaid || 0) - Number(data.cards.expenseTotal || 0);
+        baseIncomeRemaining = Number(data.cards.incomeReceived || 0) - Number(data.cards.incomeTotal || 0);
+
+        cExpRemaining.textContent = formatSignedMoney(baseExpenseRemaining);
+        cIncRemaining.textContent = formatSignedMoney(baseIncomeRemaining);
 
         allUpcomingExpenses = data.upcomingExpenses || [];
         allUpcomingIncomes = data.upcomingIncomes || [];
@@ -459,6 +542,7 @@
            } else {
                selectedExpenseCategoryIds = new Set();
            }
+
            renderExpenseCategoryPanel();
            renderExpenses();
            return;
@@ -481,6 +565,7 @@
            } else {
                selectedIncomeCategoryIds = new Set();
            }
+
            renderIncomeCategoryPanel();
            renderIncomes();
            return;
@@ -507,6 +592,9 @@
        renderIncomeCategoryPanel();
        renderIncomes();
    });
+
+    expStatusFilter?.addEventListener("change", renderExpenses);
+    incStatusFilter?.addEventListener("change", renderIncomes);
 
     btn.addEventListener("click", load);
     debtTypeFilter.addEventListener("change", load);
