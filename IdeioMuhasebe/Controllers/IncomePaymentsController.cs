@@ -61,7 +61,7 @@ namespace IdeioMuhasebe.Controllers
             var q = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
                 .Include(x => x.RecurringIncome)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && x.IsDeleted == false);
 
             if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
                 q = q.Where(x => x.IncomeTypeId == incomeTypeId.Value);

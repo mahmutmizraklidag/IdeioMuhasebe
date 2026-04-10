@@ -403,5 +403,44 @@ namespace IdeioMuhasebe.Controllers
                 return BadRequest(new { ok = false, message = "Silinemedi: " + ex.Message });
             }
         }
+        public async Task<IActionResult> Detail(int id, DateTime? fromDate, DateTime? toDate)
+        {
+            var now = DateTime.Now;
+
+            var firstDayOfMonth = new DateTime(now.Year, now.Month, 1);
+            var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+
+            var startDate = (fromDate ?? firstDayOfMonth).Date;
+            var endDate = (toDate ?? lastDayOfMonth).Date;
+
+            if (endDate < startDate)
+            {
+                var temp = startDate;
+                startDate = endDate;
+                endDate = temp;
+            }
+
+            var incomeType = await _db.IncomeTypes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (incomeType == null)
+                return NotFound();
+
+            var incomes = await _db.Incomes
+                .AsNoTracking()
+                .Where(x => x.IncomeTypeId == id
+                            && x.DueDate >= startDate
+                            && x.DueDate <= endDate && !x.IsDeleted)
+                .OrderBy(x => x.DueDate)
+                .ToListAsync();
+
+            ViewBag.IncomeTypeId = incomeType.Id;
+            ViewBag.IncomeTypeName = incomeType.Name;
+            ViewBag.FromDate = startDate;
+            ViewBag.ToDate = endDate;
+
+            return View(incomes);
+        }
     }
 }

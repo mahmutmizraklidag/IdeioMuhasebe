@@ -76,14 +76,14 @@ namespace IdeioMuhasebe.Controllers
 
             var debtQ = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && !x.IsDeleted);
 
             if (debtTypeId.HasValue && debtTypeId.Value > 0)
                 debtQ = debtQ.Where(x => x.DebtTypeId == debtTypeId.Value);
 
             var incomeQ = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && !x.IsDeleted);
 
             if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
                 incomeQ = incomeQ.Where(x => x.IncomeTypeId == incomeTypeId.Value);
@@ -281,14 +281,14 @@ namespace IdeioMuhasebe.Controllers
 
             var debtQ = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && !x.IsDeleted);
 
             if (debtTypeId.HasValue && debtTypeId.Value > 0)
                 debtQ = debtQ.Where(x => x.DebtTypeId == debtTypeId.Value);
 
             var incomeQ = _db.Incomes.AsNoTracking()
                 .Include(x => x.IncomeType)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && !x.IsDeleted);
 
             if (incomeTypeId.HasValue && incomeTypeId.Value > 0)
                 incomeQ = incomeQ.Where(x => x.IncomeTypeId == incomeTypeId.Value);

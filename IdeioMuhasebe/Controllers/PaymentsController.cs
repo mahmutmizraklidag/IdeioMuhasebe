@@ -61,7 +61,7 @@ namespace IdeioMuhasebe.Controllers
             var q = _db.Debts.AsNoTracking()
                 .Include(x => x.DebtType)
                 .Include(x => x.RecurringDebt)
-                .Where(x => x.DueDate >= f && x.DueDate < toEx);
+                .Where(x => x.DueDate >= f && x.DueDate < toEx && x.IsDeleted == false);
 
             if (debtTypeId.HasValue && debtTypeId.Value > 0)
                 q = q.Where(x => x.DebtTypeId == debtTypeId.Value);

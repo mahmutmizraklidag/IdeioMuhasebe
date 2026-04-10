@@ -1,0 +1,275 @@
+﻿@model List<IdeioMuhasebe.Entities.Income>
+
+@{
+    ViewData["Title"] = "Gelir Detayı";
+
+    var incomeTypeId = ViewBag.IncomeTypeId != null ? (int)ViewBag.IncomeTypeId : 0;
+    var incomeTypeName = ViewBag.IncomeTypeName as string ?? "Gelir Kategorisi";
+    var fromDate = ViewBag.FromDate != null ? (DateTime)ViewBag.FromDate : DateTime.Now;
+    var toDate = ViewBag.ToDate != null ? (DateTime)ViewBag.ToDate : DateTime.Now;
+
+    decimal totalAmount = Model?.Sum(x => x.Amount) ?? 0;
+    decimal totalReceived = Model?.Sum(x => x.ReceivedAmount) ?? 0;
+    decimal totalRemaining = Model?.Sum(x =>
+    {
+        var remaining = x.Amount - (x.ReceivedAmount);
+        return remaining < 0 ? 0 : remaining;
+    }) ?? 0;
+}
+
+<style>
+    .place-info-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .place-info-btn {
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(255,255,255,.12);
+        background: var(--bs-body-bg);
+        color: var(--bs-info);
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all .2s ease;
+    }
+
+        .place-info-btn:hover {
+            transform: scale(1.05);
+            border-color: rgba(13, 202, 240, .45);
+            box-shadow: 0 8px 18px rgba(13, 202, 240, .12);
+        }
+
+    .place-info-popup {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        min-width: 260px;
+        max-width: 360px;
+        background: #1f2430;
+        color: #fff;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 14px;
+        padding: 12px 14px;
+        box-shadow: 0 16px 40px rgba(0,0,0,.24);
+        z-index: 30;
+        display: none;
+    }
+
+    .place-info-wrap.active .place-info-popup {
+        display: block;
+    }
+
+    .place-info-title {
+        font-size: .8rem;
+        font-weight: 700;
+        color: rgba(255,255,255,.72);
+        margin-bottom: 6px;
+    }
+
+    .place-info-content {
+        font-size: .92rem;
+        line-height: 1.45;
+        white-space: pre-line;
+        word-break: break-word;
+    }
+
+    .place-info-empty {
+        color: var(--bs-secondary-color);
+    }
+</style>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2 class="mb-1">@incomeTypeName</h2>
+        <div class="text-muted">
+            @fromDate.ToString("dd.MM.yyyy") - @toDate.ToString("dd.MM.yyyy") tarihleri arasındaki gelirler
+        </div>
+    </div>
+
+    <div>
+        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Geri Dön
+        </a>
+    </div>
+</div>
+
+<div class="card card-soft mb-4">
+    <div class="card-body">
+        <form asp-controller="Incomes" asp-action="Detail" asp-route-id="@incomeTypeId" method="get" class="row g-3 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label">Başlangıç Tarihi</label>
+                <input type="date" name="fromDate" class="form-control" value="@fromDate.ToString("yyyy-MM-dd")" />
+            </div>
+
+            <div class="col-12 col-md-4">
+                <label class="form-label">Bitiş Tarihi</label>
+                <input type="date" name="toDate" class="form-control" value="@toDate.ToString("yyyy-MM-dd")" />
+            </div>
+
+            <div class="col-12 col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-funnel"></i> Filtrele
+                </button>
+
+                <a asp-controller="Incomes"
+                       asp-action="Detail"
+                       asp-route-id="@incomeTypeId"
+                       class="btn btn-outline-secondary">
+                    Bu Ay
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-12 col-md-4">
+        <div class="card card-soft h-100">
+            <div class="card-body">
+                <div class="text-muted small mb-1">Toplam Gelir</div>
+                <div class="fs-4 fw-semibold text-success">@totalAmount.ToString("N2") ₺</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="card card-soft h-100">
+            <div class="card-body">
+                <div class="text-muted small mb-1">Tahsil Edilen</div>
+                <div class="fs-4 fw-semibold text-success">@totalReceived.ToString("N2") ₺</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="card card-soft h-100">
+            <div class="card-body">
+                <div class="text-muted small mb-1">Kalan</div>
+                <div class="fs-4 fw-semibold text-warning">@totalRemaining.ToString("N2") ₺</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card card-soft">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Gelir Adı</th>
+                        <th class="text-end">Toplam</th>
+                        <th class="text-end">Tahsil Edilen</th>
+                        <th class="text-end">Kalan</th>
+                        <th class="text-center">Ödenecek Yer</th>
+                        <th>Vade Tarihi</th>
+                        <th class="text-center">Durum</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model != null && Model.Any())
+                    {
+                        foreach (var item in Model)
+                        {
+                            var received = item.ReceivedAmount ;
+                            var remaining = item.Amount - received;
+                            if (remaining < 0)
+                            {
+                                remaining = 0;
+                            }
+
+                            var isReceived = received >= item.Amount;
+                            var paymentPlace = item.Payer ;
+
+                            <tr>
+                                <td class="fw-semibold">@item.Name</td>
+                                <td class="text-end">@item.Amount.ToString("N2") ₺</td>
+                                <td class="text-end">@received.ToString("N2") ₺</td>
+                                <td class="text-end">@remaining.ToString("N2") ₺</td>
+                                <td class="text-center">
+                                    @if (!string.IsNullOrWhiteSpace(paymentPlace))
+                                    {
+                                        <div class="place-info-wrap">
+                                            <button type="button" class="place-info-btn" title="Ödenecek yeri göster">
+                                                <i class="bi bi-info-circle-fill"></i>
+                                            </button>
+                                            <div class="place-info-popup">
+                                                <div class="place-info-title">Ödenecek Yer</div>
+                                                <div class="place-info-content">@paymentPlace</div>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="place-info-empty">-</span>
+                                    }
+                                </td>
+                                <td>@item.DueDate.ToString("dd.MM.yyyy")</td>
+                                <td class="text-center">
+                                    @if (isReceived)
+                                    {
+                                        <span class="badge rounded-pill text-bg-success">Tahsil Edildi</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge rounded-pill text-bg-danger">Tahsil Edilmedi</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                Seçilen tarih aralığında kayıt bulunamadı.
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const closeAllPlacePopups = () => {
+                document.querySelectorAll(".place-info-wrap.active").forEach(x => x.classList.remove("active"));
+            };
+
+            document.addEventListener("click", function() {
+                closeAllPlacePopups();
+            });
+
+            document.querySelectorAll(".place-info-btn").forEach(btn => {
+                btn.addEventListener("click", function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const wrap = this.closest(".place-info-wrap");
+                    const isActive = wrap.classList.contains("active");
+
+                    closeAllPlacePopups();
+
+                    if (!isActive) {
+                        wrap.classList.add("active");
+                    }
+                });
+            });
+
+            document.querySelectorAll(".place-info-popup").forEach(popup => {
+                popup.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                });
+            });
+        })();
+    </script>
+}
